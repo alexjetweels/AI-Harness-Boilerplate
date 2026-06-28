@@ -3,7 +3,7 @@ name = "ai-harness-backend"
 version = "0.1.0"
 description = "FastAPI backend for the AI harness dashboard"
 authors = ["AI Harness Team <dev@example.com>"]
-readme = "../README.md"
+readme = "../../../README.md"
 package-mode = false
 
 [tool.poetry.dependencies]

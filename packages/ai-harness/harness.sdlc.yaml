@@ -1,5 +1,6 @@
-# Generic SDLC harness configuration for repositories using the root `.claude/`
-# prompt pack. This does not require spec-kit slash commands.
+# Generic SDLC harness configuration for target repositories that provide
+# `.claude/commands/sdlc.*.md` directly or copy them from `templates/claude-sdlc`.
+# This does not require spec-kit slash commands.
 specs_glob: "docs/sdlc/current"
 state_dir: ".specify/state"
 runs_dir: ".specify/runs"
@@ -15,12 +16,12 @@ agent:
   extra_args: []
 
 project:
-  build:      "echo 'TODO: set project.build in spec-harness/harness.sdlc.yaml' && exit 1"
-  typecheck:  "echo 'TODO: set project.typecheck in spec-harness/harness.sdlc.yaml' && exit 1"
-  lint:       "echo 'TODO: set project.lint in spec-harness/harness.sdlc.yaml' && exit 1"
-  test:       "echo 'TODO: set project.test in spec-harness/harness.sdlc.yaml' && exit 1"
-  security:   "echo 'TODO: set project.security in spec-harness/harness.sdlc.yaml' && exit 1"
-  acceptance: "echo 'TODO: set project.acceptance in spec-harness/harness.sdlc.yaml' && exit 1"
+  build:      "echo 'TODO: set project.build in packages/ai-harness/harness.sdlc.yaml' && exit 1"
+  typecheck:  "echo 'TODO: set project.typecheck in packages/ai-harness/harness.sdlc.yaml' && exit 1"
+  lint:       "echo 'TODO: set project.lint in packages/ai-harness/harness.sdlc.yaml' && exit 1"
+  test:       "echo 'TODO: set project.test in packages/ai-harness/harness.sdlc.yaml' && exit 1"
+  security:   "echo 'TODO: set project.security in packages/ai-harness/harness.sdlc.yaml' && exit 1"
+  acceptance: "echo 'TODO: set project.acceptance in packages/ai-harness/harness.sdlc.yaml' && exit 1"
 
 phases:
   - name: intake

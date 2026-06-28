@@ -55,7 +55,7 @@ The provider can be Claude Code, OpenAI, Anthropic API, or another implementatio
 
 ## 4. SDLC Phase Flow
 
-The generic SDLC pipeline uses the commands under `.claude/commands/sdlc.*.md`:
+The generic SDLC pipeline uses commands under the target project's `.claude/commands/sdlc.*.md`. Projects without those prompts can copy them from `templates/claude-sdlc/`.
 
 ```text
 intake
@@ -90,7 +90,7 @@ Each phase produces a stable artifact under `docs/sdlc/current/`:
 The generic harness configuration is:
 
 ```text
-spec-harness/harness.sdlc.yaml
+packages/ai-harness/harness.sdlc.yaml
 ```
 
 ## 5. Runtime Flow For One Command
@@ -100,7 +100,7 @@ Example command:
 ```bash
 harness run --feature "Add login with password reset" \
   --tech-stack "React + FastAPI" \
-  --config spec-harness/harness.sdlc.yaml
+  --config packages/ai-harness/harness.sdlc.yaml
 ```
 
 Runtime flow:
@@ -280,7 +280,7 @@ Security issue detected
 Target module layout:
 
 ```text
-spec-harness/src/spec_harness/
+packages/ai-harness/src/spec_harness/
   cli.py                  # CLI entrypoint
   config.py               # harness YAML loader
   state.py                # state persistence
@@ -303,7 +303,7 @@ spec-harness/src/spec_harness/
 Current repo already has:
 
 ```text
-spec-harness/src/spec_harness/
+packages/ai-harness/src/spec_harness/
   cli.py
   config.py
   state.py
@@ -457,7 +457,7 @@ Target dashboard:
 React UI
   -> FastAPI run API
   -> run worker / subprocess manager
-  -> spec-harness CLI or in-process orchestrator
+  -> packages/ai-harness CLI or in-process orchestrator
   -> .specify/state/<run-id>.json
   -> .specify/runs/<run-id>/*
   -> streamed phase status, logs, gates, cost, risk
@@ -497,13 +497,13 @@ The first implemented target is `examples/todo-app`. From the UI, a user can ent
 Generic SDLC config:
 
 ```text
-spec-harness/harness.sdlc.yaml
+packages/ai-harness/harness.sdlc.yaml
 ```
 
 Spec-kit config:
 
 ```text
-spec-harness/harness.yaml
+packages/ai-harness/harness.yaml
 ```
 
 The generic config intentionally fails project commands by default:
@@ -569,7 +569,7 @@ Critical risk
 
 | Area | Current | Target |
 | --- | --- | --- |
-| Prompt pack | `.claude/commands`, `.claude/agents`, `.claude/rules` | Project-specific extensions and versioned prompt/eval baselines |
+| Prompt pack | `templates/claude-sdlc/.claude` plus target-project `.claude` | Project-specific extensions and versioned prompt/eval baselines |
 | Context | Static Claude memory and prompt artifacts | Generated per-phase context packet |
 | Tooling | Claude `allowed_tools`, shell gates | Tool registry, audit log, sandbox wrapper, idempotency |
 | Evaluation | Basic deterministic gates | Build/test/acceptance/golden eval/optional judge |

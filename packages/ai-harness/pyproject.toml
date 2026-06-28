@@ -1,5 +1,5 @@
 [project]
-name = "spec-harness"
+name = "ai-harness"
 version = "0.1.0"
 description = "Closed-loop SDLC harness on top of GitHub spec-kit and Claude Code"
 requires-python = ">=3.11"

@@ -14,9 +14,8 @@ The frontend is a Vite React dashboard.
 Prefer these commands when frontend behavior changes:
 
 ```bash
-cd frontend
+cd apps/dashboard/frontend
 npm run build
 ```
 
-If lint or tests are added later, update this file and `spec-harness/harness.sdlc.yaml`.
-
+If lint or tests are added later, update this file and `packages/ai-harness/harness.sdlc.yaml`.

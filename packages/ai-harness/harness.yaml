@@ -1,6 +1,6 @@
-# ── spec-harness configuration ────────────────────────────────────────────────
+# ── packages/ai-harness configuration ────────────────────────────────────────────────
 # Drop this whole folder into the ROOT of your spec-kit project, then run:
-#   harness run --feature "..."  --config spec-harness/harness.yaml
+#   harness run --feature "..."  --config packages/ai-harness/harness.yaml
 specs_glob: "specs/*"
 state_dir: ".specify/state"
 runs_dir: ".specify/runs"

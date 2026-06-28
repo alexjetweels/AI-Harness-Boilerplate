@@ -4,10 +4,11 @@ This repository is a boilerplate for running a gated SDLC workflow around Claude
 
 ## Repository Shape
 
-- `frontend/`: React dashboard for observing harness runs.
-- `backend/`: FastAPI API for dashboard data. The current API simulates runs unless wired to the CLI.
-- `spec-harness/`: Python CLI that drives Claude Code in headless mode through SDLC phases and deterministic gates.
-- `.claude/`: Reusable Claude Code SDLC prompt pack for any project.
+- `apps/dashboard/frontend/`: React dashboard for observing and starting harness runs.
+- `apps/dashboard/backend/`: FastAPI API for dashboard data and harness subprocess execution.
+- `packages/ai-harness/`: Python CLI that drives AI providers through SDLC phases and deterministic gates.
+- `templates/claude-sdlc/`: Reusable Claude Code SDLC prompt pack for target projects.
+- `examples/todo-app/`: Demo target project used for end-to-end harness testing.
 - `docs/`: Architecture and operating documentation.
 
 ## Default Working Rules
@@ -35,10 +36,9 @@ Every SDLC run should leave behind:
 When available, use these commands:
 
 ```bash
-cd backend && ./start.sh
-cd frontend && npm run dev
-cd frontend && npm run build
+cd apps/dashboard/backend && ./start.sh
+cd apps/dashboard/frontend && npm run dev
+cd apps/dashboard/frontend && npm run build
 ```
 
-For the generic harness, configure real commands in `spec-harness/harness.sdlc.yaml` before relying on gates.
-
+For the generic harness, configure real commands in `packages/ai-harness/harness.sdlc.yaml` before relying on gates.

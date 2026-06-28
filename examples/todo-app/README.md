@@ -33,7 +33,7 @@ TODO_FILE=/tmp/todo.json node src/cli.js add "Task title"
 From the repository root:
 
 ```bash
-PYTHONPATH=spec-harness/src python3 -m spec_harness run \
+PYTHONPATH=packages/ai-harness/src python3 -m spec_harness run \
   --feature "Add priority support to todo tasks" \
   --repo examples/todo-app \
   --config harness.yaml
@@ -42,7 +42,7 @@ PYTHONPATH=spec-harness/src python3 -m spec_harness run \
 Use Codex instead of Claude Code:
 
 ```bash
-PYTHONPATH=spec-harness/src python3 -m spec_harness run \
+PYTHONPATH=packages/ai-harness/src python3 -m spec_harness run \
   --feature "Add due date support to todo tasks" \
   --repo examples/todo-app \
   --config harness.codex.yaml

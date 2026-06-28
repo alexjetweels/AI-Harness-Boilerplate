@@ -32,12 +32,12 @@ def run_case(case_dir: str, template: str) -> bool:
     work = tempfile.mkdtemp(prefix="eval-")
     try:
         # TODO: point EVAL_TEMPLATE at a spec-kit-initialized repo with this
-        # harness installed (specify init + pip install -e ./spec-harness).
+        # harness installed (specify init + pip install -e ./packages/ai-harness).
         shutil.copytree(template, work, dirs_exist_ok=True)
 
         rc = subprocess.run(
             ["harness", "run", "--feature", prompt, "--repo", work,
-             "--config", os.path.join(work, "spec-harness", "harness.yaml")],
+             "--config", os.path.join(work, "packages/ai-harness", "harness.yaml")],
         ).returncode
         passed = rc == 0
 
@@ -52,7 +52,7 @@ def run_case(case_dir: str, template: str) -> bool:
 def main() -> int:
     template = os.environ.get("EVAL_TEMPLATE", "")
     if not template:
-        print("Set EVAL_TEMPLATE to a spec-kit-initialized repo with spec-harness installed.")
+        print("Set EVAL_TEMPLATE to a spec-kit-initialized repo with packages/ai-harness installed.")
         return 1
 
     results = {}

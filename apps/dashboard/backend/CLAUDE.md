@@ -14,9 +14,8 @@ The backend is a FastAPI service.
 Prefer these commands when backend behavior changes:
 
 ```bash
-cd backend
+cd apps/dashboard/backend
 python -m compileall app
 ```
 
-If new test tooling is added, update this file and `spec-harness/harness.sdlc.yaml`.
-
+If new test tooling is added, update this file and `packages/ai-harness/harness.sdlc.yaml`.

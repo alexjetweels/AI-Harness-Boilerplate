@@ -189,7 +189,16 @@ STAGES: list[Stage] = [
 ]
 
 RUNS: dict[str, Run] = {}
-ROOT_DIR = Path(__file__).resolve().parents[2]
+
+
+def _find_root_dir() -> Path:
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "packages" / "ai-harness").exists() and (parent / "examples").exists():
+            return parent
+    return Path(__file__).resolve().parents[4]
+
+
+ROOT_DIR = _find_root_dir()
 TARGETS = {
     "todo-app": ROOT_DIR / "examples" / "todo-app",
 }
@@ -361,7 +370,7 @@ async def _run_harness_process(run_id: str) -> None:
     ]
 
     env = os.environ.copy()
-    harness_src = str(ROOT_DIR / "spec-harness" / "src")
+    harness_src = str(ROOT_DIR / "packages" / "ai-harness" / "src")
     env["PYTHONPATH"] = harness_src + os.pathsep + env.get("PYTHONPATH", "")
 
     record["status"] = "running"
