@@ -1,0 +1,63 @@
+"""`harness` CLI: run, resume, status."""
+import argparse
+import os
+import re
+import sys
+import time
+
+from . import config as config_mod
+from . import orchestrator
+from . import state as state_mod
+
+
+def _slug(text: str) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:40]
+    return f"{base}-{time.strftime('%Y%m%d-%H%M%S')}"
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(prog="harness", description="Spec-Kit SDLC harness for Claude Code")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    pr = sub.add_parser("run", help="Run the full pipeline for a feature")
+    pr.add_argument("--feature", required=True)
+    pr.add_argument("--config", default="harness.yaml")
+    pr.add_argument("--repo", default=".")
+    pr.add_argument("--run-id", default=None)
+    pr.add_argument("--tech-stack", default="", help="passed to /speckit.plan")
+    pr.add_argument("--constitution", default="Code quality, testing standards, UX consistency, performance")
+
+    rs = sub.add_parser("resume", help="Resume an existing run")
+    rs.add_argument("run_id")
+    rs.add_argument("--config", default="harness.yaml")
+    rs.add_argument("--repo", default=".")
+
+    st = sub.add_parser("status", help="Show run status")
+    st.add_argument("run_id")
+    st.add_argument("--config", default="harness.yaml")
+    st.add_argument("--repo", default=".")
+
+    args = p.parse_args(argv)
+    cfg = config_mod.load(os.path.join(args.repo, args.config))
+
+    if args.cmd == "run":
+        run_id = args.run_id or _slug(args.feature)
+        ctx_extra = {"tech_stack": args.tech_stack, "constitution": args.constitution}
+        return orchestrator.run(cfg, args.feature, run_id, repo=args.repo, ctx_extra=ctx_extra)
+
+    if args.cmd == "resume":
+        s = state_mod.load(os.path.join(args.repo, cfg.state_dir), args.run_id)
+        return orchestrator.run(cfg, s["feature"], args.run_id, repo=args.repo, resume=True)
+
+    if args.cmd == "status":
+        s = state_mod.load(os.path.join(args.repo, cfg.state_dir), args.run_id)
+        print(f"Run {s['run_id']}  status={s['status']}  cost=${s['cost_usd']}  feature_dir={s.get('feature_dir')}")
+        for name, ph in s["phases"].items():
+            print(f"  {name:14} {str(ph.get('status')):8} gate={ph.get('gate')} attempts={ph.get('attempts')}")
+        return 0
+
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

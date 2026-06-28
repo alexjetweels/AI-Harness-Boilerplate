@@ -1,0 +1,5 @@
+node_modules/
+.todo.json
+.specify/
+docs/sdlc/current/*.tmp
+

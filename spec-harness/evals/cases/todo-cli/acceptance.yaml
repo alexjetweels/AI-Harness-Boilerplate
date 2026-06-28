@@ -1,0 +1,5 @@
+# Shell commands that must all exit 0 for the case to count as passing.
+# Edit to match how the generated app is actually invoked.
+checks:
+  - "test -d specs"                       # spec-kit produced a feature dir
+  - "echo 'TODO: add real acceptance assertions for the built todo app'"

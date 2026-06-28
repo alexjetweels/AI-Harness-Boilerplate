@@ -1,0 +1,73 @@
+name: spec-harness
+
+on:
+  workflow_dispatch:
+    inputs:
+      feature:
+        description: "Feature description"
+        required: true
+      tech_stack:
+        description: "Tech stack for /speckit.plan"
+        required: false
+        default: ""
+  issues:
+    types: [labeled]    # add label "harness:build" to an issue to build it
+
+jobs:
+  build-feature:
+    # run on manual dispatch, or when the trigger label is applied
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'harness:build'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+
+      - name: Install Claude Code + spec-kit + harness
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          pip install uv
+          uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
+          pip install -e ./spec-harness
+          # If the repo is not yet spec-kit-initialized, uncomment:
+          # specify init --here --integration claude --force
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "spec-harness[bot]"
+          git config user.email "harness@users.noreply.github.com"
+
+      - name: Run harness
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HARNESS_OPEN_ISSUE: "1"
+        run: |
+          FEATURE="${{ github.event.inputs.feature || github.event.issue.title }}"
+          harness run --feature "$FEATURE" \
+            --tech-stack "${{ github.event.inputs.tech_stack }}" \
+            --config spec-harness/harness.yaml
+
+      - name: Push branch + open PR
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          git add -A && git commit -m "harness: ${{ github.event.inputs.feature || github.event.issue.title }}" || true
+          git push -u origin "$BRANCH" || true
+          gh pr create --fill --base main --head "$BRANCH" || true
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-runs
+          path: .specify/runs/

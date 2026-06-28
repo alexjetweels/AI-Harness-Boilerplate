@@ -1,0 +1,100 @@
+# Generic SDLC harness configuration for repositories using the root `.claude/`
+# prompt pack. This does not require spec-kit slash commands.
+specs_glob: "docs/sdlc/current"
+state_dir: ".specify/state"
+runs_dir: ".specify/runs"
+
+agent:
+  provider: claude          # claude | codex
+  bin: claude
+  model: sonnet
+  max_turns: 40
+  max_budget_usd: 0
+  allowed_tools: "Read,Write,Edit,Bash"
+  skip_permissions: true
+  extra_args: []
+
+project:
+  build:      "echo 'TODO: set project.build in spec-harness/harness.sdlc.yaml' && exit 1"
+  typecheck:  "echo 'TODO: set project.typecheck in spec-harness/harness.sdlc.yaml' && exit 1"
+  lint:       "echo 'TODO: set project.lint in spec-harness/harness.sdlc.yaml' && exit 1"
+  test:       "echo 'TODO: set project.test in spec-harness/harness.sdlc.yaml' && exit 1"
+  security:   "echo 'TODO: set project.security in spec-harness/harness.sdlc.yaml' && exit 1"
+  acceptance: "echo 'TODO: set project.acceptance in spec-harness/harness.sdlc.yaml' && exit 1"
+
+phases:
+  - name: intake
+    command: "/sdlc.intake {feature}"
+    max_attempts: 2
+    gates:
+      - { name: intake-exists, type: glob_nonempty, params: { glob: "docs/sdlc/current/01-intake.md" } }
+
+  - name: requirements
+    command: "/sdlc.requirements"
+    max_attempts: 2
+    gates:
+      - { name: requirements-exist, type: glob_nonempty, params: { glob: "docs/sdlc/current/02-requirements.md" } }
+      - { name: no-requirement-markers, type: no_markers,
+          params: { glob: "docs/sdlc/current/02-requirements.md", markers: ["[NEEDS CLARIFICATION]", "TBD"] } }
+
+  - name: architecture
+    command: "/sdlc.architecture {tech_stack}"
+    max_attempts: 2
+    gates:
+      - { name: architecture-exists, type: glob_nonempty, params: { glob: "docs/sdlc/current/03-architecture.md" } }
+
+  - name: plan
+    command: "/sdlc.plan {tech_stack}"
+    max_attempts: 2
+    gates:
+      - { name: plan-exists, type: glob_nonempty, params: { glob: "docs/sdlc/current/04-plan.md" } }
+
+  - name: tasks
+    command: "/sdlc.tasks"
+    max_attempts: 2
+    gates:
+      - { name: tasks-exist, type: glob_nonempty, params: { glob: "docs/sdlc/current/05-tasks.md" } }
+
+  - name: implement
+    command: "/sdlc.implement"
+    max_attempts: 3
+    gates:
+      - { name: implementation-notes, type: glob_nonempty, params: { glob: "docs/sdlc/current/06-implementation.md" } }
+      - { name: build,     type: shell, params: { cmd: "${project.build}" } }
+      - { name: typecheck, type: shell, params: { cmd: "${project.typecheck}" } }
+      - { name: lint,      type: shell, params: { cmd: "${project.lint}" } }
+      - { name: test,      type: shell, params: { cmd: "${project.test}" } }
+
+  - name: review
+    command: "/sdlc.review"
+    max_attempts: 2
+    gates:
+      - { name: review-exists, type: glob_nonempty, params: { glob: "docs/sdlc/current/07-review.md" } }
+      - { name: no-blocking-review, type: agent_output,
+          params: { fail_markers: ["BLOCK", "critical", "must fix"] } }
+
+  - name: test
+    command: "/sdlc.test"
+    max_attempts: 2
+    gates:
+      - { name: test-report-exists, type: glob_nonempty, params: { glob: "docs/sdlc/current/08-test-report.md" } }
+      - { name: acceptance, type: shell, params: { cmd: "${project.acceptance}" } }
+
+  - name: security
+    command: "/sdlc.security"
+    max_attempts: 2
+    gates:
+      - { name: security-report-exists, type: glob_nonempty, params: { glob: "docs/sdlc/current/09-security.md" } }
+      - { name: security-command, type: shell, params: { cmd: "${project.security}" } }
+
+  - name: docs
+    command: "/sdlc.docs"
+    max_attempts: 2
+    gates:
+      - { name: docs-report-exists, type: glob_nonempty, params: { glob: "docs/sdlc/current/10-docs.md" } }
+
+  - name: release
+    command: "/sdlc.release"
+    max_attempts: 1
+    gates:
+      - { name: release-report-exists, type: glob_nonempty, params: { glob: "docs/sdlc/current/11-release.md" } }
