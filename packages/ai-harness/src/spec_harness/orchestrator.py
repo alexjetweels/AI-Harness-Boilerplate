@@ -4,6 +4,7 @@ import os
 import subprocess
 
 from . import agent as agent_mod
+from . import db_logger
 from . import gates as gates_mod
 from . import state as state_mod
 
@@ -53,7 +54,7 @@ def _write_log(runs_dir: str, run_id: str, fname: str, content: str) -> None:
 
 
 def run(cfg, feature: str, run_id: str, repo: str = ".",
-        resume: bool = False, ctx_extra: dict | None = None) -> int:
+        resume: bool = False, ctx_extra: dict | None = None) -> int:  # noqa: C901
     state_dir = os.path.join(repo, cfg.state_dir)
     runs_dir = os.path.join(repo, cfg.runs_dir)
 
@@ -81,6 +82,7 @@ def run(cfg, feature: str, run_id: str, repo: str = ".",
         passed = False
 
         for attempt in range(1, phase.max_attempts + 1):
+            db_logger.phase_started(run_id, phase.name, attempt)
             agent_text = ""
 
             if phase.command:
@@ -104,6 +106,9 @@ def run(cfg, feature: str, run_id: str, repo: str = ".",
                     state["phases"][phase.name] = {
                         "status": "failed", "gate": "agent_error", "attempts": attempt}
                     state_mod.save(state_dir, state)
+                    db_logger.phase_done(run_id, phase.name, attempt,
+                                        "failed", "agent_error",
+                                        agent_ok=False, cost_usd=res.cost)
                     continue
 
             # The /speckit.specify run creates specs/<branch>/ — discover it now.
@@ -118,13 +123,30 @@ def run(cfg, feature: str, run_id: str, repo: str = ".",
             _write_log(runs_dir, run_id, f"{phase.name}.attempt{attempt}.gates.log",
                        report or "ALL GATES PASSED")
 
+            # ── Log each gate outcome to DB ──────────────────────────────────
+            for o in outcomes:
+                db_logger.gate_outcome(
+                    run_id, phase.name, attempt,
+                    o.name, getattr(o, "type", ""),
+                    o.passed, o.report,
+                )
+
+            gate_result = "pass" if not failed else "fail"
             state["phases"][phase.name] = {
                 "status": "done" if not failed else "failed",
-                "gate": "pass" if not failed else "fail",
+                "gate": gate_result,
                 "attempts": attempt,
                 "failed_gates": [o.name for o in failed],
             }
             state_mod.save(state_dir, state)
+
+            # Determine agent_ok from last agent call (None if gate-only phase)
+            _agent_ok = res.ok if phase.command else None  # type: ignore[name-defined]
+            db_logger.phase_done(run_id, phase.name, attempt,
+                                 "done" if not failed else "failed",
+                                 gate_result,
+                                 agent_ok=_agent_ok,
+                                 cost_usd=res.cost if phase.command else 0.0)  # type: ignore[name-defined]
 
             if not failed:
                 passed = True
@@ -140,6 +162,7 @@ def run(cfg, feature: str, run_id: str, repo: str = ".",
     state["status"] = "complete"
     state["current_phase"] = None
     state_mod.save(state_dir, state)
+    db_logger.run_complete(run_id, state["cost_usd"])
     print(f"\u2705 Run {run_id} complete. Cost ~${state['cost_usd']}. "
           f"Feature dir: {state.get('feature_dir')}")
     return 0
@@ -153,6 +176,7 @@ def _escalate(repo, runs_dir, run_id, state, phase, feedback, state_dir) -> int:
             f"## Feature\n{state['feature']}\n\n"
             f"## Last gate report\n\n```\n{feedback or '(none)'}\n```\n")
     _write_log(runs_dir, run_id, "ESCALATION.md", body)
+    db_logger.run_escalated(run_id, phase, feedback or "(none)")
     print(f"\u26d4 Run {run_id} escalated at phase '{phase}'. "
           f"See {os.path.join(runs_dir, run_id, 'ESCALATION.md')}")
 

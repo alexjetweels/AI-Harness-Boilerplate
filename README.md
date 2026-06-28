@@ -155,6 +155,8 @@ Legacy simulator endpoints are still present for comparison:
 
 ## Architecture
 
+Read [docs/template-overview.md](docs/template-overview.md) for the consolidated template overview.
+
 Read [docs/architecture.md](docs/architecture.md) for the full H1-H7 model:
 
 - H1 Context Harness
@@ -164,4 +166,3 @@ Read [docs/architecture.md](docs/architecture.md) for the full H1-H7 model:
 - H5 Governance Harness
 - H6 AgentOps Harness
 - H7 Orchestration Harness
-

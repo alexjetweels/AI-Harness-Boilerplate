@@ -29,7 +29,7 @@ coverage/
 
 # Environment files
 .env
-.env.*
+
 
 # System files
 .DS_Store

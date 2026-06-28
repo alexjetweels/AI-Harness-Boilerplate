@@ -1,0 +1,261 @@
+"""Thin event-logging helpers that write structured rows to PostgreSQL.
+
+All functions are fire-and-forget (they swallow DB errors so a logging
+failure never crashes the harness or the API).
+"""
+from __future__ import annotations
+
+import json
+import time
+
+from . import db
+
+
+# ── Run lifecycle ─────────────────────────────────────────────────────────────
+
+def log_run_created(record: dict) -> None:
+    """Insert a new harness run row."""
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO harness_runs
+                        (run_id, feature, provider, tech_stack, target,
+                         target_repo, status, created_at, log_path)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (run_id) DO NOTHING
+                    """,
+                    (
+                        record["id"],
+                        record["feature"],
+                        record.get("provider", "codex"),
+                        record.get("tech_stack", ""),
+                        record.get("target", "todo-app"),
+                        record.get("target_repo", ""),
+                        record.get("status", "queued"),
+                        record["created_at"],
+                        record.get("log_path", ""),
+                    ),
+                )
+        _emit_event(record["id"], "run_created", None,
+                    f"Run {record['id']} created for feature: {record['feature'][:120]}")
+    except Exception as exc:
+        print(f"[db_logger] log_run_created failed: {exc}")
+
+
+def log_run_updated(run_id: str, **fields) -> None:
+    """Patch one or more columns on an existing run row."""
+    if not fields:
+        return
+    allowed = {
+        "status", "started_at", "finished_at", "cost_usd",
+        "current_phase", "feature_dir", "pid", "return_code", "command",
+    }
+    safe = {k: v for k, v in fields.items() if k in allowed}
+    if not safe:
+        return
+    set_clause = ", ".join(f"{k} = %s" for k in safe)
+    values = list(safe.values()) + [run_id]
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"UPDATE harness_runs SET {set_clause} WHERE run_id = %s",
+                    values,
+                )
+    except Exception as exc:
+        print(f"[db_logger] log_run_updated failed: {exc}")
+
+
+# ── Phase events ──────────────────────────────────────────────────────────────
+
+def log_phase_started(run_id: str, phase_name: str, attempt: int,
+                      prompt_snippet: str = "") -> None:
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO phase_events
+                        (run_id, phase_name, attempt, status, started_at, prompt_snippet)
+                    VALUES (%s, %s, %s, 'running', %s, %s)
+                    """,
+                    (run_id, phase_name, attempt, time.time(),
+                     (prompt_snippet or "")[:500]),
+                )
+        _emit_event(run_id, "phase_started", phase_name,
+                    f"Phase '{phase_name}' attempt {attempt} started")
+    except Exception as exc:
+        print(f"[db_logger] log_phase_started failed: {exc}")
+
+
+def log_phase_done(run_id: str, phase_name: str, attempt: int,
+                   status: str, gate_result: str,
+                   agent_ok: bool | None = None, cost_usd: float = 0.0) -> None:
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE phase_events
+                       SET status = %s,
+                           gate_result = %s,
+                           agent_ok = %s,
+                           cost_usd = %s,
+                           finished_at = %s
+                     WHERE run_id = %s AND phase_name = %s AND attempt = %s
+                    """,
+                    (status, gate_result, agent_ok, cost_usd,
+                     time.time(), run_id, phase_name, attempt),
+                )
+        _emit_event(run_id, "phase_done", phase_name,
+                    f"Phase '{phase_name}' attempt {attempt} → {status} (gate: {gate_result})",
+                    {"cost_usd": cost_usd, "agent_ok": agent_ok})
+    except Exception as exc:
+        print(f"[db_logger] log_phase_done failed: {exc}")
+
+
+# ── Gate outcomes ─────────────────────────────────────────────────────────────
+
+def log_gate_outcome(run_id: str, phase_name: str, attempt: int,
+                     gate_name: str, gate_type: str,
+                     passed: bool, report: str = "") -> None:
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO gate_outcomes
+                        (run_id, phase_name, attempt, gate_name, gate_type,
+                         passed, report, checked_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (run_id, phase_name, attempt, gate_name, gate_type,
+                     passed, (report or "")[:4000], time.time()),
+                )
+        icon = "✅" if passed else "❌"
+        _emit_event(run_id, "gate_checked", phase_name,
+                    f"{icon} Gate '{gate_name}' ({gate_type}): {'pass' if passed else 'fail'}",
+                    {"gate_name": gate_name, "gate_type": gate_type, "passed": passed})
+    except Exception as exc:
+        print(f"[db_logger] log_gate_outcome failed: {exc}")
+
+
+# ── Generic event emitter ─────────────────────────────────────────────────────
+
+def log_event(run_id: str, event_type: str, phase: str | None,
+              message: str, payload: dict | None = None) -> None:
+    _emit_event(run_id, event_type, phase, message, payload)
+
+
+def _emit_event(run_id: str, event_type: str, phase: str | None,
+                message: str, payload: dict | None = None) -> None:
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO run_events
+                        (run_id, event_type, phase, message, payload, occurred_at)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (run_id, event_type, phase, message,
+                     json.dumps(payload) if payload else None,
+                     time.time()),
+                )
+    except Exception as exc:
+        print(f"[db_logger] _emit_event failed: {exc}")
+
+
+# ── Query helpers (used by API endpoints) ────────────────────────────────────
+
+def fetch_all_runs() -> list[dict]:
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT * FROM harness_runs ORDER BY created_at DESC"
+                )
+                return [dict(row) for row in cur.fetchall()]
+    except Exception as exc:
+        print(f"[db_logger] fetch_all_runs failed: {exc}")
+        return []
+
+
+def fetch_run(run_id: str) -> dict | None:
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT * FROM harness_runs WHERE run_id = %s", (run_id,)
+                )
+                row = cur.fetchone()
+                return dict(row) if row else None
+    except Exception as exc:
+        print(f"[db_logger] fetch_run failed: {exc}")
+        return None
+
+
+def fetch_run_events(run_id: str, limit: int = 200, after_id: int = 0) -> list[dict]:
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT id, event_type, phase, message, payload, occurred_at
+                      FROM run_events
+                     WHERE run_id = %s AND id > %s
+                     ORDER BY id ASC
+                     LIMIT %s
+                    """,
+                    (run_id, after_id, limit),
+                )
+                return [dict(row) for row in cur.fetchall()]
+    except Exception as exc:
+        print(f"[db_logger] fetch_run_events failed: {exc}")
+        return []
+
+
+def fetch_gate_outcomes(run_id: str) -> list[dict]:
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT phase_name, attempt, gate_name, gate_type,
+                           passed, report, checked_at
+                      FROM gate_outcomes
+                     WHERE run_id = %s
+                     ORDER BY checked_at ASC
+                    """,
+                    (run_id,),
+                )
+                return [dict(row) for row in cur.fetchall()]
+    except Exception as exc:
+        print(f"[db_logger] fetch_gate_outcomes failed: {exc}")
+        return []
+
+
+def fetch_phase_timeline(run_id: str) -> list[dict]:
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT phase_name, attempt, status, gate_result,
+                           agent_ok, cost_usd, started_at, finished_at
+                      FROM phase_events
+                     WHERE run_id = %s
+                     ORDER BY started_at ASC
+                    """,
+                    (run_id,),
+                )
+                return [dict(row) for row in cur.fetchall()]
+    except Exception as exc:
+        print(f"[db_logger] fetch_phase_timeline failed: {exc}")
+        return []
+
+
+# Need this for fetch_all_runs cursor factory
+import psycopg2.extras  # noqa: E402 — placed here to keep top-level imports clean

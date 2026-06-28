@@ -12,9 +12,12 @@ from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+from . import db
+from . import db_logger
 
 
 HarnessKind = Literal[
@@ -96,97 +99,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-COMPONENTS: list[HarnessComponent] = [
-    HarnessComponent(
-        "h1",
-        "H1",
-        "context",
-        "Context Harness",
-        90,
-        "strong",
-        "RAG-style context pipeline, spec layering, and run-scoped memory.",
-        [],
-        "#2f80ed",
-    ),
-    HarnessComponent(
-        "h2",
-        "H2",
-        "tool",
-        "Tool Harness",
-        75,
-        "good",
-        "Tool registry, schema checks, dockerized execution, and rate limits.",
-        ["Add idempotency keys", "Persist tool audit logs"],
-        "#63c06b",
-    ),
-    HarnessComponent(
-        "h3",
-        "H3",
-        "evaluation",
-        "Evaluation Harness",
-        85,
-        "strong",
-        "Multi-gate LLM-as-judge, golden cases, and deterministic acceptance checks.",
-        [],
-        "#ff914d",
-    ),
-    HarnessComponent(
-        "h4",
-        "H4",
-        "security",
-        "Security Harness",
-        20,
-        "critical",
-        "Credential boundaries and sandbox policy are present but incomplete.",
-        ["Add prompt-injection scans", "Add credential audit", "Add leakage detection"],
-        "#d35d43",
-    ),
-    HarnessComponent(
-        "h5",
-        "H5",
-        "governance",
-        "Governance Harness",
-        25,
-        "critical",
-        "Policy registry exists conceptually; approval workflow is missing.",
-        ["Add approval workflow", "Add immutable audit log", "Add risk registry"],
-        "#f0a236",
-    ),
-    HarnessComponent(
-        "h6",
-        "H6",
-        "agentops",
-        "AgentOps Harness",
-        30,
-        "gap",
-        "Basic port checks and status tracking; needs per-agent observability.",
-        ["Track per-agent cost", "Add drift detection", "Add hallucination scoring"],
-        "#54b6c9",
-    ),
-    HarnessComponent(
-        "h7",
-        "H7",
-        "orchestration",
-        "Orchestration Harness",
-        80,
-        "good",
-        "DAG stages, repair loop, retry policy, and parallel dispatch model.",
-        ["Expose lane dependencies in API"],
-        "#9b59c9",
-    ),
-]
 
-STAGES: list[Stage] = [
-    Stage("intake", "intake", "done", "context"),
-    Stage("plan", "plan", "done", "context"),
-    Stage("tools", "tool map", "done", "tool"),
-    Stage("gates", "gates", "current", "evaluation"),
-    Stage("security", "security", "pending", "security"),
-    Stage("policy", "policy", "pending", "governance"),
-    Stage("agentops", "agentops", "pending", "agentops"),
-    Stage("review", "review", "pending", "evaluation"),
-    Stage("ship", "ship", "pending", "orchestration"),
-]
+@app.on_event("startup")
+def _startup() -> None:
+    """Initialise PostgreSQL schema on startup. Warn but don't crash if DB is unavailable."""
+    try:
+        db.init_db()
+        _restore_harness_runs_from_db()
+    except Exception as exc:
+        print(f"⚠️  DB unavailable on startup (continuing without persistence): {exc}")
+
 
 RUNS: dict[str, Run] = {}
 
@@ -205,6 +127,32 @@ TARGETS = {
 HARNESS_LOG_DIR = ROOT_DIR / ".run" / "harness-runs"
 HARNESS_RUNS: dict[str, dict] = {}
 HARNESS_PROCESSES: dict[str, asyncio.subprocess.Process] = {}
+
+
+def _restore_harness_runs_from_db() -> None:
+    """Re-populate in-memory HARNESS_RUNS from DB on server restart."""
+    rows = db_logger.fetch_all_runs()
+    for row in rows:
+        run_id = row["run_id"]
+        if run_id not in HARNESS_RUNS:
+            HARNESS_RUNS[run_id] = {
+                "id": run_id,
+                "feature": row["feature"],
+                "provider": row.get("provider", "codex"),
+                "tech_stack": row.get("tech_stack", ""),
+                "target": row.get("target", "todo-app"),
+                "target_repo": row.get("target_repo", ""),
+                "status": row.get("status", "unknown"),
+                "created_at": row.get("created_at", 0.0),
+                "started_at": row.get("started_at"),
+                "finished_at": row.get("finished_at"),
+                "pid": row.get("pid"),
+                "return_code": row.get("return_code"),
+                "command": row.get("command"),
+                "log_path": row.get("log_path", ""),
+            }
+    if rows:
+        print(f"✅ Restored {len(rows)} harness run(s) from database")
 
 
 
@@ -372,10 +320,18 @@ async def _run_harness_process(run_id: str) -> None:
     env = os.environ.copy()
     harness_src = str(ROOT_DIR / "packages" / "ai-harness" / "src")
     env["PYTHONPATH"] = harness_src + os.pathsep + env.get("PYTHONPATH", "")
+    # Pass DB URL so harness subprocess can write events directly to PostgreSQL
+    db_url = os.environ.get("DATABASE_URL", "")
+    if db_url:
+        env["HARNESS_DB_URL"] = db_url
 
     record["status"] = "running"
     record["command"] = " ".join(cmd)
     record["started_at"] = time.time()
+    db_logger.log_run_updated(run_id,
+                              status="running",
+                              started_at=record["started_at"],
+                              command=record["command"])
 
     with log_path.open("w", encoding="utf-8") as log:
         log.write(f"$ {' '.join(cmd)}\n\n")
@@ -389,6 +345,7 @@ async def _run_harness_process(run_id: str) -> None:
         )
         HARNESS_PROCESSES[run_id] = proc
         record["pid"] = proc.pid
+        db_logger.log_run_updated(run_id, pid=proc.pid)
         return_code = await proc.wait()
 
     HARNESS_PROCESSES.pop(run_id, None)
@@ -396,6 +353,10 @@ async def _run_harness_process(run_id: str) -> None:
     record["finished_at"] = time.time()
     if record.get("status") != "stopped":
         record["status"] = "complete" if return_code == 0 else "failed"
+    db_logger.log_run_updated(run_id,
+                              return_code=return_code,
+                              finished_at=record["finished_at"],
+                              status=record["status"])
 
 
 async def _stop_harness_process(run_id: str) -> None:
@@ -452,27 +413,6 @@ async def _simulate_run(run_id: str) -> None:
 @app.get("/health")
 def health() -> dict:
     return {"ok": True}
-
-
-@app.get("/api/dashboard")
-def dashboard() -> dict:
-    run = _latest_run()
-    return {
-        "readiness": {
-            "current_level": 3,
-            "target_level": 4,
-            "subtitle": "Current SDD pipeline vs. full 7-component harness required for CASAN Level 4",
-            "gaps": [
-                gap
-                for component in COMPONENTS
-                for gap in component.gaps
-                if component.status in {"gap", "critical"}
-            ],
-        },
-        "components": [asdict(component) for component in COMPONENTS],
-        "stages": [asdict(stage) for stage in STAGES],
-        "run": _serialize_run(run),
-    }
 
 
 @app.get("/api/runs")
@@ -541,7 +481,7 @@ async def create_harness_run(payload: CreateHarnessRunRequest) -> dict:
 
     run_id = f"ui-{uuid4().hex[:10]}"
     log_path = HARNESS_LOG_DIR / f"{run_id}.log"
-    HARNESS_RUNS[run_id] = {
+    record = {
         "id": run_id,
         "feature": payload.feature,
         "provider": payload.provider,
@@ -557,6 +497,8 @@ async def create_harness_run(payload: CreateHarnessRunRequest) -> dict:
         "command": None,
         "log_path": str(log_path),
     }
+    HARNESS_RUNS[run_id] = record
+    db_logger.log_run_created(record)
     asyncio.create_task(_run_harness_process(run_id))
     return _serialize_harness_run(run_id)
 
@@ -573,4 +515,51 @@ async def stop_harness_run(run_id: str) -> dict:
     HARNESS_RUNS[run_id]["status"] = "stopped"
     await _stop_harness_process(run_id)
     HARNESS_RUNS[run_id]["finished_at"] = time.time()
+    db_logger.log_run_updated(run_id, status="stopped",
+                              finished_at=HARNESS_RUNS[run_id]["finished_at"])
     return _serialize_harness_run(run_id)
+
+
+# ── New logging / observability endpoints ─────────────────────────────────────
+
+@app.get("/api/harness-runs/{run_id}/events")
+def get_run_events(
+    run_id: str,
+    limit: int = Query(default=200, ge=1, le=1000),
+    after_id: int = Query(default=0, ge=0),
+) -> dict:
+    """Return structured audit-log events for a run, paginated by row id."""
+    if run_id not in HARNESS_RUNS:
+        raise HTTPException(status_code=404, detail="Harness run not found")
+    events = db_logger.fetch_run_events(run_id, limit=limit, after_id=after_id)
+    return {"run_id": run_id, "events": events, "count": len(events)}
+
+
+@app.get("/api/harness-runs/{run_id}/gates")
+def get_run_gates(run_id: str) -> dict:
+    """Return all gate outcomes grouped by phase for a run."""
+    if run_id not in HARNESS_RUNS:
+        raise HTTPException(status_code=404, detail="Harness run not found")
+    rows = db_logger.fetch_gate_outcomes(run_id)
+    # Group by phase_name → attempt → list of gates
+    grouped: dict = {}
+    for row in rows:
+        phase = row["phase_name"]
+        attempt = row["attempt"]
+        grouped.setdefault(phase, {}).setdefault(attempt, []).append(row)
+    return {"run_id": run_id, "phases": grouped, "total": len(rows)}
+
+
+@app.get("/api/harness-runs/{run_id}/phases")
+def get_run_phases(run_id: str) -> dict:
+    """Return phase event timeline with cost and latency per phase."""
+    if run_id not in HARNESS_RUNS:
+        raise HTTPException(status_code=404, detail="Harness run not found")
+    rows = db_logger.fetch_phase_timeline(run_id)
+    # Attach duration_sec for convenience
+    for row in rows:
+        if row.get("started_at") and row.get("finished_at"):
+            row["duration_sec"] = round(row["finished_at"] - row["started_at"], 2)
+        else:
+            row["duration_sec"] = None
+    return {"run_id": run_id, "phases": rows}
