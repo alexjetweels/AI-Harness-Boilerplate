@@ -1,23 +1,28 @@
 # AI Harness Template Overview
 
-This is the consolidated design note for the repository after restructuring it into a reusable AI harness template.
+This repository is now a reusable AI harness template plus a real OKR source package:
+
+```text
+AINative_OKR_Claude_GHCP/
+```
+
+The next major task is to build the OKR website inside that folder using its imported agents, requirements, change requests, Spec-Kit templates, and technical architecture.
 
 ## Purpose
 
-This repository is meant to be a reusable **AI SDLC harness template**. It should help users run AI coding agents against any target project through a controlled flow instead of manually operating terminal commands, provider CLIs, prompts, and gates.
+The template should let a user run an AI coding flow against a target project through a controlled harness instead of manually driving many prompts and terminal commands.
 
-The target use case is:
+Target workflow:
 
 ```text
-User opens dashboard
-  -> enters a task
-  -> selects target project
-  -> selects provider: Codex or Claude Code
-  -> clicks Start
-  -> harness executes SDLC phases
-  -> target project code is changed
-  -> gates run
-  -> artifacts/logs/status appear in UI
+User opens dashboard or CLI
+  -> selects AINative_OKR_Claude_GHCP as target
+  -> enters the OKR website task
+  -> selects provider: Claude Code or Codex
+  -> starts a harness run
+  -> imported OKR agents generate docs, specs, plans, tasks, code, reviews, and tests
+  -> gates verify the app
+  -> logs, artifacts, status, and costs appear in the dashboard
 ```
 
 ## Repository Structure
@@ -26,214 +31,182 @@ User opens dashboard
 apps/
   dashboard/
     backend/              FastAPI API for UI and harness process execution
-    frontend/             React UI for non-terminal users
+    frontend/             React dashboard
 
 packages/
   ai-harness/             Python harness engine and CLI
+    harness.yaml          Existing Spec-Kit-style config
+    harness.sdlc.yaml     Existing generic SDLC config
 
-templates/
-  claude-sdlc/            Reusable prompt pack for target projects
-
-examples/
-  todo-app/               Demo target project
+AINative_OKR_Claude_GHCP/
+  .claude/
+    agents/               Real Claude Code agents for the OKR flow
+    commands/             Slash command wrappers
+  .github/
+    agents/               GitHub Copilot agent mirror
+    prompts/              GitHub Copilot prompt wrappers
+  .specify/
+    memory/               Constitution
+    scripts/              Spec-Kit helper scripts
+    templates/            Spec, plan, task, SRS, BD, DD templates
+  docs/
+    input/                OKR requirements and change requests
+    technical_architecture.md
+  CLAUDE.md               OKR app build instructions and coding rules
+  README.md               Imported AI-SDLC flow documentation
 
 docs/
-  architecture.md         Detailed H1-H7 architecture
-  template-overview.md    This consolidated overview
+  architecture.md         Detailed architecture and gap map
+  template-overview.md    This practical overview
 ```
 
-## Core Concept
+The previous todo demo and reusable Claude SDLC template directories are currently deleted from the working tree, so the docs should no longer present them as active runnable assets.
 
-The harness is not just a prompt pack. It is a control plane around AI agents.
+## What The OKR Source Contains
 
-```text
-Dashboard / CLI / CI
-  -> AI Harness Engine
-  -> target project prompts and context
-  -> provider adapter
-       -> Codex CLI
-       -> Claude Code
-       -> future OpenAI / Anthropic API
-  -> gates
-  -> logs, state, artifacts
-  -> dashboard status
-```
+`AINative_OKR_Claude_GHCP/` contains the real process source for the OKR web application:
 
-## Seven Harness Components
+| Item | Status |
+| --- | --- |
+| Claude Code command pack | Present |
+| Claude Code agent pack | Present |
+| GitHub Copilot agent/prompt mirror | Present |
+| Spec-Kit memory, scripts, templates | Present |
+| OKR requirements | Present |
+| Change requests | Present |
+| Technical app architecture | Present |
+| Actual backend/frontend code | Not present yet |
+| Docker Compose app stack | Not present yet |
+| Target-specific harness config | Not present yet |
 
-| ID | Component | Role |
-| --- | --- | --- |
-| H1 | Context Harness | Build the right context for each phase |
-| H2 | Tool Harness | Control tool calls, commands, policies, timeouts, and audit logs |
-| H3 | Evaluation Harness | Run build, typecheck, lint, tests, acceptance, and evals |
-| H4 | Security Harness | Detect secrets, injection, leakage, dependency risk, and risky commands |
-| H5 | Governance Harness | Handle approvals, risk policy, escalation, and audit |
-| H6 | AgentOps Harness | Track cost, tokens, latency, failures, drift, and traces |
-| H7 | Orchestration Harness | Coordinate phases, retries, repair loop, resume, and provider routing |
+## OKR Agent Flow
 
-Current implementation is strongest in H7 and H3. H1, H2, H4, H5, and H6 still need deeper implementation to guarantee robust use across arbitrary projects.
+The imported flow is orchestrated by `okr.bossbuiltin` and includes:
 
-## Target Project Contract
+| Stage | Agents |
+| --- | --- |
+| Requirements/design | `okr.srs`, `okr.bd`, `okr.dd`, `okr.srsallsystem` |
+| Spec-Kit | `speckit.specify`, `speckit.clarify`, `speckit.plan`, `speckit.tasks`, `speckit.implement`, `speckit.analyze`, `speckit.checklist`, `speckit.taskstoissues` |
+| Review | `okr.reviewspec`, `okr.reviewplan`, `okr.reviewcode` |
+| Test | `okr.testkit` |
+| Orchestration | `okr.bossbuiltin`, plus shared protocols and step files |
 
-To run well against any project, the target repo should provide or be adapted into this contract:
+The flow produces IPA documents, Spec-Kit artifacts, generated code, review reports, test cases, test reports, and finally a launched local OKR app.
+
+## Harness Standard Fit
+
+The imported OKR source mostly satisfies the prompt-side target project contract:
 
 ```text
 target-project/
-  CLAUDE.md or equivalent project guidance
-  .claude/commands/* or another prompt mapping
-  harness.yaml
-  build/typecheck/lint/test/security/acceptance commands
-  docs/sdlc/current/ for generated artifacts
+  CLAUDE.md                 present
+  .claude/commands/*        present
+  .claude/agents/*          present
+  .specify/*                present
+  docs/input/*              present
 ```
 
-If a target project already has strong prompts, the harness should discover and use them. If it does not, copy the fallback prompt pack from:
+The missing harness/runtime pieces are:
 
 ```text
-templates/claude-sdlc/
+target-project/
+  harness.okr.yaml          missing
+  backend/                  missing
+  frontend/                 missing
+  docker-compose.yml        missing
+  package scripts           missing
+  build/test/security gates missing
 ```
 
-Example:
+This means the source is harness-compatible in shape, but not yet harness-runnable as a real app target.
 
-```bash
-cp -R templates/claude-sdlc/.claude /path/to/target-project/.claude
-cp templates/claude-sdlc/CLAUDE.md /path/to/target-project/CLAUDE.md
-```
+## Current Harness Capabilities
 
-## Dashboard Flow
+The Python harness can currently:
 
-The intended user flow is dashboard-first:
-
-```text
-1. User enters task.
-2. User selects provider.
-3. User clicks Start task.
-4. Backend starts harness subprocess.
-5. Harness runs inside target project.
-6. UI polls status, logs, phases, cost, and artifacts.
-7. User reviews output and generated project changes.
-```
-
-Implemented backend endpoints:
-
-```text
-POST /api/harness-runs
-GET  /api/harness-runs/latest
-GET  /api/harness-runs/{run_id}
-POST /api/harness-runs/{run_id}/stop
-GET  /api/harness-targets
-```
-
-## Demo Target
-
-The first demo target is:
-
-```text
-examples/todo-app/
-```
-
-It includes:
-
-- Node.js dependency-free Todo CLI.
-- Unit tests.
-- Acceptance script.
-- Security check script.
-- Claude-compatible `.claude/commands/sdlc.*.md`.
-- `harness.yaml` for Claude Code.
-- `harness.codex.yaml` for Codex.
-
-Run directly:
-
-```bash
-cd examples/todo-app
-npm run build
-npm run typecheck
-npm run lint
-npm test
-npm run acceptance
-npm run security
-```
-
-Run through harness:
-
-```bash
-PYTHONPATH=packages/ai-harness/src python3 -m spec_harness run \
-  --feature "Add priority support to todo tasks" \
-  --repo examples/todo-app \
-  --config harness.codex.yaml
-```
-
-## Provider Support
-
-Current provider support:
-
-| Provider | Status | Notes |
-| --- | --- | --- |
-| Claude Code | Supported | Uses `claude -p --output-format json` |
-| Codex CLI | Supported | Uses `codex exec --json` |
-| OpenAI API | Not implemented | Planned provider adapter |
-| Anthropic API | Not implemented | Planned provider adapter |
-
-Codex does not expand Claude Code slash commands directly. The harness currently reads `.claude/commands/<command>.md` and inlines it into a normal prompt before calling `codex exec`.
-
-## What Is Guaranteed Today
-
-The current repo can:
-
-- Start harness runs from UI.
-- Run against `examples/todo-app`.
-- Use Claude Code or Codex provider configs.
+- Load YAML phase configs.
+- Run Claude Code or Codex CLI.
+- Inline `.claude/commands/*.md` for Codex.
 - Persist state under `.specify/state`.
-- Persist run logs under `.specify/runs` and `.run/harness-runs`.
-- Run deterministic gates from `harness.yaml`.
-- Show phases, logs, artifacts, provider, status, and cost in the dashboard.
+- Persist run logs under `.specify/runs`.
+- Retry failed agent phases.
+- Escalate after max attempts.
+- Run deterministic gates: shell, glob, marker checks, and agent-output marker checks.
 
-## What Is Not Yet Guaranteed
+The implementation is strongest in orchestration and deterministic gates. Context packets, tool audit, security scans, governance approvals, and detailed AgentOps metrics still need deeper implementation.
 
-The current repo does not yet guarantee robust operation for any arbitrary project without adaptation.
+## Mapping Needed For The OKR Website
 
-Missing pieces:
-
-- Automatic prompt discovery for arbitrary projects.
-- Automatic stack and command detection.
-- Generated `harness.project.yaml`.
-- Full context packet builder.
-- Strong tool-call audit and policy enforcement.
-- Approval workflow and governance UI.
-- Built-in secret/dependency/prompt-injection scanners.
-- Preview hosting for generated frontend apps.
-- OpenAI and Anthropic API provider adapters.
-
-## Recommended Next Milestone
-
-Add onboarding for arbitrary target projects:
-
-```bash
-harness init --repo /path/to/target-project
-```
-
-Expected behavior:
+Add an OKR-specific harness config in the imported folder:
 
 ```text
-scan target repo
-  -> detect stack
-  -> discover prompts
-  -> detect build/test commands
-  -> detect existing CI
-  -> generate harness.project.yaml
-  -> show readiness report in UI
+AINative_OKR_Claude_GHCP/harness.okr.yaml
 ```
 
-Dashboard should then show:
+Start with one of these modes:
+
+| Mode | Harness behavior | Use when |
+| --- | --- | --- |
+| Boss mode | Runs `/okr.bossbuiltin` as one main phase, then gates final outputs | First integration pass |
+| Expanded mode | Maps each OKR step to a separate harness phase | Better dashboard visibility and repair control |
+
+Recommended first pass: Boss mode. It keeps the imported flow intact while proving that the folder works as a harness target.
+
+## Gap List
+
+| Gap | Why it matters | Fix |
+| --- | --- | --- |
+| No OKR harness config | Harness cannot run the imported flow directly | Add `harness.okr.yaml` |
+| No generated app code yet | Build/test gates have nothing to run | Scaffold the app in `backend/` and `frontend/` |
+| No project scripts | Shell gates cannot verify implementation | Add npm scripts for build, typecheck, lint, test |
+| No Docker stack | Target architecture requires local Docker runtime | Add `docker-compose.yml` and Dockerfiles |
+| No deterministic OKR artifact gates | Harness cannot prove SRS/BD/DD/spec/plan/tasks were produced | Add glob gates for expected outputs |
+| No dashboard target registration | UI may not list the OKR folder | Add target discovery/config for `AINative_OKR_Claude_GHCP/` |
+| Boss flow hidden from harness | One command hides individual step status | Use Expanded mode after first pass |
+| Security/governance still light | DB resets, secrets, auth, and Docker commands need guardrails | Add security and approval policies |
+
+## Target OKR App Stack
+
+The imported technical architecture specifies:
+
+| Layer | Stack |
+| --- | --- |
+| Frontend | React 18, Vite 5, React Router, TanStack Query, Axios, React Hook Form, Zod, Tailwind CSS |
+| Backend | Node.js 20, NestJS 10, Prisma 5, JWT, bcrypt, Swagger |
+| Database | MySQL 8 |
+| Local runtime | Docker Compose |
+| Test direction | Jest, Vitest/React Testing Library, Playwright |
+
+Planned app layout:
 
 ```text
-Project readiness
-  - prompts found / missing
-  - build command found / missing
-  - tests found / missing
-  - security command found / missing
-  - provider compatibility
-  - ready to run: yes/no
+AINative_OKR_Claude_GHCP/
+  backend/
+    src/
+    prisma/
+    test/
+    Dockerfile
+    package.json
+  frontend/
+    src/
+    public/
+    Dockerfile
+    package.json
+  docker/
+    wait-for-db.sh
+  docker-compose.yml
+  docker-compose.test.yml
 ```
 
-This is the step that turns the current demo-capable template into a stronger harness for arbitrary real-world projects.
+## Next Milestone
 
+The next milestone should be target onboarding for `AINative_OKR_Claude_GHCP/`:
+
+1. Create `harness.okr.yaml`.
+2. Register the OKR folder as a dashboard target.
+3. Add initial Boss-mode gates for generated docs and final app health.
+4. Scaffold backend/frontend/Docker source inside the OKR folder.
+5. Replace placeholder gates with real build, typecheck, lint, test, security, and acceptance commands.
+6. Split Boss mode into Expanded mode after the first successful end-to-end run.
+
+After these fixes, this repo can move from "harness plus imported source" to "harness-driven OKR app implementation."

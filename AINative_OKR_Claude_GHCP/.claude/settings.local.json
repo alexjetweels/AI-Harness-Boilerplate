@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(New-Item -ItemType Directory -Force -Path \"c:\\\\Users\\\\NghiaNC1\\\\OneDrive - FPT Corporation\\\\Data\\\\Workspace\\\\AINative_OKR_Claude_GHCP\\\\docs\\\\output\\\\ipa-docs\\\\srs\")",
+      "PowerShell(New-Item -ItemType Directory -Force -Path \"c:\\\\Users\\\\NghiaNC1\\\\OneDrive - FPT Corporation\\\\Data\\\\Workspace\\\\AINative_OKR_Claude_GHCP\\\\docs\\\\output\\\\output_logs\\\\FEA-001\\\\reports\")"
+    ]
+  }
+}
