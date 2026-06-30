@@ -85,8 +85,9 @@ class CreateRunRequest(BaseModel):
 class CreateHarnessRunRequest(BaseModel):
     feature: str = Field(..., min_length=3, max_length=500)
     provider: Literal["claude", "codex"] = "codex"
-    tech_stack: str = Field(default="Node.js CLI demo target", max_length=240)
-    target: Literal["todo-app"] = "todo-app"
+    tech_stack: str = Field(default="React 18 + NestJS 10 + Prisma 5 + MySQL 8 + Docker", max_length=240)
+    target: Literal["okr-ghcp", "todo-app"] = "okr-ghcp"
+    mode: Literal["expanded", "boss"] = "expanded"
 
 
 app = FastAPI(title="AI Harness Dashboard API", version="0.1.0")
@@ -115,14 +116,24 @@ RUNS: dict[str, Run] = {}
 
 def _find_root_dir() -> Path:
     for parent in Path(__file__).resolve().parents:
-        if (parent / "packages" / "ai-harness").exists() and (parent / "examples").exists():
+        if (parent / "packages" / "ai-harness").exists() and (parent / "AINative_OKR_Claude_GHCP").exists():
             return parent
     return Path(__file__).resolve().parents[4]
 
 
 ROOT_DIR = _find_root_dir()
+HARNESS_PACKAGE_DIR = ROOT_DIR / "packages" / "ai-harness"
 TARGETS = {
-    "todo-app": ROOT_DIR / "examples" / "todo-app",
+    "okr-ghcp": ROOT_DIR / "AINative_OKR_Claude_GHCP",
+}
+todo_target = ROOT_DIR / "examples" / "todo-app"
+if todo_target.exists():
+    TARGETS["todo-app"] = todo_target
+TARGET_CONFIGS = {
+    ("okr-ghcp", "expanded"): str(HARNESS_PACKAGE_DIR / "targets" / "okr-ghcp" / "harness.okr.yaml"),
+    ("okr-ghcp", "boss"): str(HARNESS_PACKAGE_DIR / "targets" / "okr-ghcp" / "harness.okr.boss.yaml"),
+    ("todo-app", "expanded"): "harness.codex.yaml",
+    ("todo-app", "boss"): "harness.codex.yaml",
 }
 HARNESS_LOG_DIR = ROOT_DIR / ".run" / "harness-runs"
 HARNESS_RUNS: dict[str, dict] = {}
@@ -140,7 +151,7 @@ def _restore_harness_runs_from_db() -> None:
                 "feature": row["feature"],
                 "provider": row.get("provider", "codex"),
                 "tech_stack": row.get("tech_stack", ""),
-                "target": row.get("target", "todo-app"),
+                "target": row.get("target", "okr-ghcp"),
                 "target_repo": row.get("target_repo", ""),
                 "status": row.get("status", "unknown"),
                 "created_at": row.get("created_at", 0.0),
@@ -206,22 +217,6 @@ def _serialize_run(run: Run) -> dict:
     }
 
 
-def _phase_names() -> list[str]:
-    return [
-        "intake",
-        "requirements",
-        "architecture",
-        "plan",
-        "tasks",
-        "implement",
-        "review",
-        "test",
-        "security",
-        "docs",
-        "release",
-    ]
-
-
 def _read_json(path: Path) -> dict | None:
     try:
         return json.loads(path.read_text())
@@ -238,22 +233,46 @@ def _tail(path: Path, limit: int = 120) -> list[str]:
 
 
 def _artifact_summary(target_repo: Path) -> list[dict]:
-    artifact_dir = target_repo / "docs" / "sdlc" / "current"
-    if not artifact_dir.exists():
-        return []
+    artifact_dirs = [
+        target_repo / "docs" / "output",
+        target_repo / "docs" / "sdlc" / "current",
+        target_repo / ".specify" / "harness" / "context",
+    ]
     items = []
-    for path in sorted(artifact_dir.glob("*.md")):
-        try:
-            stat = path.stat()
-        except OSError:
+    for artifact_dir in artifact_dirs:
+        if not artifact_dir.exists():
             continue
-        items.append({
-            "name": path.name,
-            "path": str(path.relative_to(target_repo)),
-            "size": stat.st_size,
-            "updated_at": stat.st_mtime,
-        })
-    return items
+        for path in sorted(artifact_dir.rglob("*")):
+            if not path.is_file() or path.suffix.lower() not in {".md", ".yaml", ".yml", ".json"}:
+                continue
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            items.append({
+                "name": path.name,
+                "path": str(path.relative_to(target_repo)),
+                "size": stat.st_size,
+                "updated_at": stat.st_mtime,
+            })
+    items.sort(key=lambda item: item["updated_at"], reverse=True)
+    return items[:80]
+
+
+def _phase_names(record: dict, state: dict) -> list[str]:
+    names = list(state.get("phases", {}).keys())
+    target_repo = Path(record["target_repo"])
+    config_name = record.get("config") or TARGET_CONFIGS.get((record.get("target"), record.get("mode", "expanded")), "")
+    config_path = Path(config_name)
+    if not config_path.is_absolute():
+        config_path = target_repo / config_name
+    try:
+        import yaml
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        names.extend([phase["name"] for phase in raw.get("phases", []) if "name" in phase])
+    except Exception:
+        pass
+    return list(dict.fromkeys(names))
 
 
 def _serialize_harness_run(run_id: str) -> dict:
@@ -262,10 +281,10 @@ def _serialize_harness_run(run_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Harness run not found")
 
     target_repo = Path(record["target_repo"])
-    state = _read_json(target_repo / ".specify" / "state" / f"{run_id}.json") or {}
+    state = db_logger.fetch_run_state(run_id) or {}
     phases_raw = state.get("phases", {})
     phases = []
-    for name in _phase_names():
+    for name in _phase_names(record, state):
         phase = phases_raw.get(name, {})
         phases.append({
             "name": name,
@@ -287,23 +306,24 @@ def _serialize_harness_run(run_id: str) -> dict:
         "current_phase": state.get("current_phase"),
         "cost_usd": state.get("cost_usd", 0.0),
         "phases": phases,
-        "artifacts": _artifact_summary(target_repo),
-        "log_tail": _tail(Path(record["log_path"])),
+        "artifacts": db_logger.fetch_artifacts(run_id),
+        "log_tail": db_logger.fetch_artifact_log_tail(run_id),
     }
 
 
 async def _run_harness_process(run_id: str) -> None:
     record = HARNESS_RUNS[run_id]
     target_repo = Path(record["target_repo"])
-    provider = record["provider"]
-    config = "harness.codex.yaml" if provider == "codex" else "harness.yaml"
+    config = record.get("config") or TARGET_CONFIGS.get((record["target"], record.get("mode", "expanded")))
+    if not config:
+        config = TARGET_CONFIGS.get((record["target"], "expanded"), "harness.yaml")
     log_path = Path(record["log_path"])
     HARNESS_LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     cmd = [
         sys.executable,
         "-m",
-        "spec_harness",
+        "cli",
         "run",
         "--feature",
         record["feature"],
@@ -313,6 +333,8 @@ async def _run_harness_process(run_id: str) -> None:
         str(target_repo),
         "--config",
         config,
+        "--provider",
+        record["provider"],
         "--run-id",
         run_id,
     ]
@@ -450,11 +472,13 @@ def harness_targets() -> dict:
     return {
         "targets": [
             {
-                "id": "todo-app",
-                "name": "Todo App Demo",
-                "path": str(TARGETS["todo-app"].relative_to(ROOT_DIR)),
+                "id": target_id,
+                "name": "AINative OKR Claude/GHCP" if target_id == "okr-ghcp" else "Todo App Demo",
+                "path": str(path.relative_to(ROOT_DIR)),
                 "providers": ["codex", "claude"],
+                "modes": ["expanded", "boss"] if target_id == "okr-ghcp" else ["expanded"],
             }
+            for target_id, path in TARGETS.items()
         ]
     }
 
@@ -481,12 +505,19 @@ async def create_harness_run(payload: CreateHarnessRunRequest) -> dict:
 
     run_id = f"ui-{uuid4().hex[:10]}"
     log_path = HARNESS_LOG_DIR / f"{run_id}.log"
+    config = (
+        TARGET_CONFIGS.get((payload.target, payload.mode))
+        or TARGET_CONFIGS.get((payload.target, "expanded"))
+        or "harness.yaml"
+    )
     record = {
         "id": run_id,
         "feature": payload.feature,
         "provider": payload.provider,
         "tech_stack": payload.tech_stack,
         "target": payload.target,
+        "mode": payload.mode,
+        "config": config,
         "target_repo": str(target_repo),
         "status": "queued",
         "created_at": time.time(),
@@ -563,3 +594,19 @@ def get_run_phases(run_id: str) -> dict:
         else:
             row["duration_sec"] = None
     return {"run_id": run_id, "phases": rows}
+
+
+@app.get("/api/harness-runs/{run_id}/log")
+def get_run_log(
+    run_id: str,
+    lines: int = Query(default=200, ge=1, le=2000),
+) -> dict:
+    """Return the tail of the raw harness subprocess log file."""
+    if run_id not in HARNESS_RUNS:
+        raise HTTPException(status_code=404, detail="Harness run not found")
+    record = HARNESS_RUNS[run_id]
+    log_path = Path(record.get("log_path", ""))
+    if not log_path.exists():
+        return {"run_id": run_id, "lines": [], "available": False}
+    tail = _tail(log_path, limit=lines)
+    return {"run_id": run_id, "lines": tail, "available": True, "total": len(tail)}

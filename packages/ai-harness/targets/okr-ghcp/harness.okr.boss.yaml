@@ -1,0 +1,114 @@
+# OKR AI-SDLC Harness Wrapper
+# Boss mode: preserve the imported boss flow as the inner orchestrator, while
+# the outer harness still owns context, logs, security baseline, and final gates.
+
+target:
+  id: okr-ghcp
+  name: AINative OKR Claude/GHCP source
+  type: ai-sdlc-target
+  inner_system: okr.bossbuiltin
+  default_mode: boss
+
+specs_glob: "docs/output/specs/*"
+
+prompt_pack:
+  command_dirs:
+    - commands
+  agent_dirs:
+    - target:.claude/agents
+    - target:.github/agents
+
+context:
+  packet_dir: ".specify/harness/context"
+  max_file_bytes: 50000
+  max_total_bytes: 250000
+  sources:
+    - { path: "CLAUDE.md", role: "target-guidance", required: true }
+    - { path: "README.md", role: "target-flow", required: true }
+    - { path: ".specify/memory/constitution.md", role: "constitution", required: true }
+    - { path: "docs/input/**/*.md", role: "business-requirements", required: true }
+    - { path: "docs/technical_architecture.md", role: "technical-architecture", required: true }
+    - { path: ".claude/agents/protocols/*.md", role: "agent-protocol", required: true }
+    - { path: ".claude/agents/steps/*.md", role: "agent-step-definition", required: true }
+
+agent:
+  provider: codex
+  bin: codex
+  model: ""
+  max_turns: 80
+  max_budget_usd: 0
+  allowed_tools: "Read,Write,Edit,Bash,Glob,Grep,TodoWrite"
+  skip_permissions: true
+  extra_args: []
+
+project:
+  build: "docker compose build"
+  test: "docker compose run --rm backend npm test && docker compose run --rm frontend npm test"
+  security: "docker compose run --rm backend npm audit --audit-level=high && docker compose run --rm frontend npm audit --audit-level=high"
+  acceptance: "docker compose up -d mysql backend frontend && docker compose ps"
+
+phases:
+  - name: H1-context
+    max_attempts: 1
+    gates:
+      - { name: context-packet-exists, type: db_artifact_exists, params: { id_key: "context_packet_id" } }
+      - { name: context-manifest-exists, type: db_artifact_exists, params: { id_key: "context_manifest_id" } }
+      - { name: required-context-present, type: json_no_missing_required, params: {} }
+
+  - name: H4-context-security
+    max_attempts: 1
+    gates:
+      - name: context-secret-scan
+        type: secret_scan
+        params:
+          include:
+            - "{context_packet}"
+            - "docs/input/**/*.md"
+            - ".specify/memory/*.md"
+          patterns: &secret_patterns
+            - "AKIA[0-9A-Z]{16}"
+            - "(?i)\\b(OPENAI_API_KEY|ANTHROPIC_API_KEY|AWS_SECRET_ACCESS_KEY|JWT_SECRET|DATABASE_URL|MYSQL_ROOT_PASSWORD)\\b\\s*[:=]\\s*['\\\"]?[A-Za-z0-9_./+\\-]{16,}"
+            - "-----BEGIN (RSA|OPENSSH|EC|DSA)? ?PRIVATE KEY-----"
+
+  - name: boss-pipeline
+    command: |
+      /okr.bossbuiltin
+      feature: {feature}
+      context-packet: {context_packet}
+      context-manifest: {context_manifest}
+      mode: harness-boss
+      language: Vietnamese
+    max_attempts: 1
+    gates:
+      - { name: boss-log-output, type: glob_nonempty, params: { glob: "docs/output/output_logs/**/00-boss.log.md" } }
+      - { name: pipeline-context-output, type: glob_nonempty, params: { glob: "docs/output/output_logs/**/pipeline-context.yaml" } }
+      - { name: srs-output, type: glob_nonempty, params: { glob: "docs/output/ipa-docs/srs/**/*.md" } }
+      - { name: bd-output, type: glob_nonempty, params: { glob: "docs/output/ipa-docs/bd/**/*.md" } }
+      - { name: dd-output, type: glob_nonempty, params: { glob: "docs/output/ipa-docs/dd/**/*.md" } }
+      - { name: specs-output, type: glob_nonempty, params: { glob: "docs/output/specs/**/*.md" } }
+      - { name: backend-source, type: glob_nonempty, params: { glob: "backend/package.json" } }
+      - { name: frontend-source, type: glob_nonempty, params: { glob: "frontend/package.json" } }
+
+  - name: final-security
+    max_attempts: 1
+    gates:
+      - name: generated-secret-scan
+        type: secret_scan
+        params:
+          include:
+            - "backend/**/*"
+            - "frontend/**/*"
+            - "docs/output/**/*.md"
+          patterns: *secret_patterns
+          exclude:
+            - "backend/node_modules/**"
+            - "frontend/node_modules/**"
+            - ".git/**"
+      - { name: dependency-audit, type: shell, params: { cmd: "${project.security}" } }
+
+  - name: verify-launch
+    max_attempts: 1
+    gates:
+      - { name: build, type: shell, params: { cmd: "${project.build}" } }
+      - { name: tests, type: shell, params: { cmd: "${project.test}" } }
+      - { name: acceptance, type: shell, params: { cmd: "${project.acceptance}" } }

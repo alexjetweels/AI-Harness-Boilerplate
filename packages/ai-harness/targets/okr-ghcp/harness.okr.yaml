@@ -1,0 +1,301 @@
+# OKR AI-SDLC Harness Wrapper
+# Expanded mode: the outer harness owns phase visibility, retries, gates, logs,
+# context packet, security baseline, and run state.
+
+target:
+  id: okr-ghcp
+  name: AINative OKR Claude/GHCP source
+  type: ai-sdlc-target
+  inner_system: claude-ghcp-prompt-pack
+  default_mode: expanded
+
+layers:
+  H1:
+    name: Context Harness
+    responsibility: Build and audit the run context packet before provider execution.
+  H2:
+    name: Tool Harness
+    responsibility: Restrict and document tool/runtime commands used by the target.
+  H3:
+    name: Evaluation Harness
+    responsibility: Enforce deterministic gates for docs, specs, code, tests, and launch.
+  H4:
+    name: Security Harness
+    responsibility: Scan context and generated artifacts for secrets and unsafe markers.
+  H5:
+    name: Governance Harness
+    responsibility: Record risk policy, escalation, retry limits, and approval boundaries.
+  H6:
+    name: AgentOps Harness
+    responsibility: Track provider, cost, phase attempts, gate results, and logs.
+  H7:
+    name: Orchestration Harness
+    responsibility: Execute the OKR SDLC phase graph with resume and repair loops.
+
+specs_glob: "docs/output/specs/*"
+
+prompt_pack:
+  command_dirs:
+    - commands
+  agent_dirs:
+    - target:.claude/agents
+    - target:.github/agents
+
+context:
+  packet_dir: ".specify/harness/context"
+  max_file_bytes: 50000
+  max_total_bytes: 250000
+  sources:
+    - { path: "CLAUDE.md", role: "target-guidance", required: true }
+    - { path: "README.md", role: "target-flow", required: true }
+    - { path: ".specify/memory/constitution.md", role: "constitution", required: true }
+    - { path: "docs/input/**/*.md", role: "business-requirements", required: true }
+    - { path: "docs/technical_architecture.md", role: "technical-architecture", required: true }
+    - { path: ".claude/agents/protocols/*.md", role: "agent-protocol", required: true }
+    - { path: ".claude/agents/steps/*.md", role: "agent-step-definition", required: true }
+
+agent:
+  provider: codex
+  bin: codex
+  model: ""
+  max_turns: 40
+  max_budget_usd: 0
+  allowed_tools: "Read,Write,Edit,Bash,Glob,Grep,TodoWrite"
+  skip_permissions: true
+  extra_args: []
+
+project:
+  build: "docker compose build"
+  typecheck: "docker compose run --rm backend npm run typecheck && docker compose run --rm frontend npm run typecheck"
+  lint: "docker compose run --rm backend npm run lint && docker compose run --rm frontend npm run lint"
+  test: "docker compose run --rm backend npm test && docker compose run --rm frontend npm test"
+  security: "docker compose run --rm backend npm audit --audit-level=high && docker compose run --rm frontend npm audit --audit-level=high"
+  acceptance: "docker compose up -d mysql backend frontend && docker compose ps"
+
+phases:
+  - name: H1-context
+    max_attempts: 1
+    gates:
+      - { name: context-packet-exists, type: db_artifact_exists, params: { id_key: "context_packet_id" } }
+      - { name: context-manifest-exists, type: db_artifact_exists, params: { id_key: "context_manifest_id" } }
+      - { name: required-context-present, type: json_no_missing_required, params: {} }
+
+  - name: H4-context-security
+    max_attempts: 1
+    gates:
+      - name: context-secret-scan
+        type: secret_scan
+        params:
+          include:
+            - "{context_packet}"
+            - "docs/input/**/*.md"
+            - ".specify/memory/*.md"
+          patterns: &secret_patterns
+            - "AKIA[0-9A-Z]{16}"
+            - "(?i)\\b(OPENAI_API_KEY|ANTHROPIC_API_KEY|AWS_SECRET_ACCESS_KEY|JWT_SECRET|DATABASE_URL|MYSQL_ROOT_PASSWORD)\\b\\s*[:=]\\s*['\\\"]?[A-Za-z0-9_./+\\-]{16,}"
+            - "-----BEGIN (RSA|OPENSSH|EC|DSA)? ?PRIVATE KEY-----"
+          exclude:
+            - ".git/**"
+            - "node_modules/**"
+
+  - name: system-srs
+    command: |
+      /okr.srs.getsrsall
+      feature: {feature}
+      context-packet: {context_packet}
+      context-manifest: {context_manifest}
+      mode: harness-expanded
+      language: Vietnamese
+    max_attempts: 2
+    gates:
+      - { name: system-srs-output, type: glob_nonempty, params: { glob: "docs/output/**/*.md" } }
+
+  - name: srs
+    command: |
+      /okr.srs
+      feature: {feature}
+      context-packet: {context_packet}
+      context-manifest: {context_manifest}
+      mode: harness-expanded
+      language: Vietnamese
+    max_attempts: 2
+    gates:
+      - { name: srs-output, type: glob_nonempty, params: { glob: "docs/output/ipa-docs/srs/**/*.md" } }
+      - { name: srs-no-open-markers, type: no_markers, params: { glob: "docs/output/ipa-docs/srs/**/*.md", markers: ["[NEEDS CLARIFICATION]", "TBD"] } }
+
+  - name: basic-design
+    command: |
+      /okr.bd
+      feature: {feature}
+      context-packet: {context_packet}
+      context-manifest: {context_manifest}
+      mode: harness-expanded
+      language: Vietnamese
+    max_attempts: 2
+    gates:
+      - { name: bd-output, type: glob_nonempty, params: { glob: "docs/output/ipa-docs/bd/**/*.md" } }
+
+  - name: specify
+    command: |
+      /speckit.specify
+      feature: {feature}
+      context-packet: {context_packet}
+      context-manifest: {context_manifest}
+      mode: harness-expanded
+      language: Vietnamese
+    max_attempts: 2
+    gates:
+      - { name: spec-output, type: glob_nonempty, params: { glob: "{feature_dir}/spec.md" } }
+
+  - name: clarify
+    command: |
+      /speckit.clarify
+      feature: {feature}
+      context-packet: {context_packet}
+      context-manifest: {context_manifest}
+      mode: harness-expanded
+      language: Vietnamese
+    max_attempts: 2
+    gates:
+      - { name: no-clarification-markers, type: no_markers, params: { glob: "{feature_dir}/spec.md", markers: ["[NEEDS CLARIFICATION]"] } }
+
+  - name: review-spec
+    command: |
+      /okr.reviewspec
+      feature: {feature}
+      context-packet: {context_packet}
+      context-manifest: {context_manifest}
+      mode: harness-expanded
+      language: Vietnamese
+    max_attempts: 2
+    gates:
+      - { name: no-blocking-spec-review, type: agent_output, params: { fail_markers: ["REJECTED", "BLOCKER", "CRITICAL"] } }
+
+  - name: plan
+    command: |
+      /speckit.plan
+      feature: {feature}
+      tech-stack: {tech_stack}
+      context-packet: {context_packet}
+      context-manifest: {context_manifest}
+      mode: harness-expanded
+      language: Vietnamese
+    max_attempts: 2
+    gates:
+      - { name: plan-output, type: glob_nonempty, params: { glob: "{feature_dir}/plan.md" } }
+      - { name: data-model-output, type: glob_nonempty, params: { glob: "{feature_dir}/data-model.md" } }
+
+  - name: review-plan
+    command: |
+      /okr.reviewplan
+      feature: {feature}
+      context-packet: {context_packet}
+      context-manifest: {context_manifest}
+      mode: harness-expanded
+      language: Vietnamese
+    max_attempts: 2
+    gates:
+      - { name: no-blocking-plan-review, type: agent_output, params: { fail_markers: ["REJECTED", "BLOCKER", "CRITICAL"] } }
+
+  - name: detail-design
+    command: |
+      /okr.dd
+      feature: {feature}
+      context-packet: {context_packet}
+      context-manifest: {context_manifest}
+      mode: harness-expanded
+      language: Vietnamese
+    max_attempts: 2
+    gates:
+      - { name: dd-output, type: glob_nonempty, params: { glob: "docs/output/ipa-docs/dd/**/*.md" } }
+
+  - name: generate-tests
+    command: |
+      /okr.testkit
+      action: gen-testcases
+      feature: {feature}
+      context-packet: {context_packet}
+      context-manifest: {context_manifest}
+      mode: harness-expanded
+      language: Vietnamese
+    max_attempts: 2
+    gates:
+      - { name: testcase-output, type: glob_nonempty, params: { glob: "docs/output/ipa-docs/testcase/**/*.md" } }
+
+  - name: tasks
+    command: |
+      /speckit.tasks
+      feature: {feature}
+      context-packet: {context_packet}
+      context-manifest: {context_manifest}
+      mode: harness-expanded
+      language: Vietnamese
+    max_attempts: 2
+    gates:
+      - { name: tasks-output, type: glob_nonempty, params: { glob: "{feature_dir}/tasks.md" } }
+
+  - name: implement
+    command: |
+      /speckit.implement
+      feature: {feature}
+      context-packet: {context_packet}
+      context-manifest: {context_manifest}
+      mode: harness-expanded
+      language: Vietnamese
+    max_attempts: 3
+    gates:
+      - { name: backend-source, type: glob_nonempty, params: { glob: "backend/package.json" } }
+      - { name: frontend-source, type: glob_nonempty, params: { glob: "frontend/package.json" } }
+      - { name: docker-compose, type: glob_nonempty, params: { glob: "docker-compose.yml" } }
+      - { name: build, type: shell, params: { cmd: "${project.build}" } }
+      - { name: typecheck, type: shell, params: { cmd: "${project.typecheck}" } }
+      - { name: lint, type: shell, params: { cmd: "${project.lint}" } }
+      - { name: test, type: shell, params: { cmd: "${project.test}" } }
+
+  - name: review-code
+    command: |
+      /okr.reviewcode
+      feature: {feature}
+      context-packet: {context_packet}
+      context-manifest: {context_manifest}
+      mode: harness-expanded
+      language: Vietnamese
+    max_attempts: 2
+    gates:
+      - { name: no-blocking-code-review, type: agent_output, params: { fail_markers: ["REJECTED", "BLOCKER", "CRITICAL", "security issue"] } }
+
+  - name: run-tests
+    command: |
+      /okr.testkit
+      action: run-tests
+      feature: {feature}
+      context-packet: {context_packet}
+      context-manifest: {context_manifest}
+      mode: harness-expanded
+      language: Vietnamese
+    max_attempts: 2
+    gates:
+      - { name: automated-tests, type: shell, params: { cmd: "${project.test}" } }
+
+  - name: H4-generated-security
+    max_attempts: 1
+    gates:
+      - name: generated-secret-scan
+        type: secret_scan
+        params:
+          include:
+            - "backend/**/*"
+            - "frontend/**/*"
+            - "docker-compose*.yml"
+            - "docs/output/**/*.md"
+          patterns: *secret_patterns
+          exclude:
+            - "backend/node_modules/**"
+            - "frontend/node_modules/**"
+            - ".git/**"
+      - { name: dependency-audit, type: shell, params: { cmd: "${project.security}" } }
+
+  - name: verify-launch
+    max_attempts: 1
+    gates:
+      - { name: acceptance, type: shell, params: { cmd: "${project.acceptance}" } }

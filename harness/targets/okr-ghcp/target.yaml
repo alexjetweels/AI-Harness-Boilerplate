@@ -1,0 +1,20 @@
+id: okr-ghcp
+name: AINative OKR Claude/GHCP
+path: AINative_OKR_Claude_GHCP
+kind: ai-sdlc-prompt-pack
+adapters:
+  expanded: harness.okr.yaml
+  boss: harness.okr.boss.yaml
+providers:
+  - codex
+  - claude
+inner_system:
+  prompts: .claude/commands
+  agents: .claude/agents
+  spec_kit: .specify
+  requirements: docs/input
+  architecture: docs/technical_architecture.md
+expected_generated_app:
+  backend: backend
+  frontend: frontend
+  runtime: docker-compose.yml

@@ -20,10 +20,10 @@ def log_run_created(record: dict) -> None:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO harness_runs
+                   INSERT INTO harness_runs
                         (run_id, feature, provider, tech_stack, target,
-                         target_repo, status, created_at, log_path)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                         mode, config, target_repo, status, created_at, log_path)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (run_id) DO NOTHING
                     """,
                     (
@@ -31,7 +31,9 @@ def log_run_created(record: dict) -> None:
                         record["feature"],
                         record.get("provider", "codex"),
                         record.get("tech_stack", ""),
-                        record.get("target", "todo-app"),
+                        record.get("target", "okr-ghcp"),
+                        record.get("mode", "expanded"),
+                        record.get("config", ""),
                         record.get("target_repo", ""),
                         record.get("status", "queued"),
                         record["created_at"],
@@ -195,6 +197,76 @@ def fetch_run(run_id: str) -> dict | None:
     except Exception as exc:
         print(f"[db_logger] fetch_run failed: {exc}")
         return None
+
+
+def fetch_run_state(run_id: str) -> dict | None:
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT state FROM harness_run_state WHERE run_id = %s",
+                    (run_id,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                state = row["state"]
+                return json.loads(state) if isinstance(state, str) else dict(state)
+    except Exception as exc:
+        print(f"[db_logger] fetch_run_state failed: {exc}")
+        return None
+
+
+def fetch_artifacts(run_id: str, limit: int = 80) -> list[dict]:
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT id, artifact_type, name, payload,
+                           length(content) AS size,
+                           created_at
+                      FROM harness_artifacts
+                     WHERE run_id = %s
+                     ORDER BY id DESC
+                     LIMIT %s
+                    """,
+                    (run_id, limit),
+                )
+                rows = []
+                for row in cur.fetchall():
+                    item = dict(row)
+                    item["path"] = f"db://harness_artifacts/{item['id']}"
+                    rows.append(item)
+                return rows
+    except Exception as exc:
+        print(f"[db_logger] fetch_artifacts failed: {exc}")
+        return []
+
+
+def fetch_artifact_log_tail(run_id: str, limit: int = 120) -> list[str]:
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT artifact_type, name, content
+                      FROM harness_artifacts
+                     WHERE run_id = %s
+                       AND artifact_type IN ('phase_log', 'gate_log', 'escalation')
+                     ORDER BY id DESC
+                     LIMIT 6
+                    """,
+                    (run_id,),
+                )
+                chunks = []
+                for artifact_type, name, content in cur.fetchall():
+                    chunks.append(f"## {artifact_type}: {name}")
+                    chunks.extend((content or "").splitlines()[-40:])
+                return chunks[-limit:]
+    except Exception as exc:
+        print(f"[db_logger] fetch_artifact_log_tail failed: {exc}")
+        return []
 
 
 def fetch_run_events(run_id: str, limit: int = 200, after_id: int = 0) -> list[dict]:

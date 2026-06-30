@@ -93,7 +93,7 @@ npm run security
 Run the harness from the repo root:
 
 ```bash
-PYTHONPATH=packages/ai-harness/src python3 -m spec_harness run \
+PYTHONPATH=packages/ai-harness/src python3 -m cli run \
   --feature "Add priority support to todo tasks" \
   --repo examples/todo-app \
   --config harness.yaml
@@ -102,7 +102,7 @@ PYTHONPATH=packages/ai-harness/src python3 -m spec_harness run \
 Run with Codex:
 
 ```bash
-PYTHONPATH=packages/ai-harness/src python3 -m spec_harness run \
+PYTHONPATH=packages/ai-harness/src python3 -m cli run \
   --feature "Add due date support to todo tasks" \
   --repo examples/todo-app \
   --config harness.codex.yaml
@@ -130,7 +130,7 @@ cp templates/claude-sdlc/CLAUDE.md /path/to/target-project/CLAUDE.md
 Then create or adapt a `harness.yaml` in the target project and run:
 
 ```bash
-PYTHONPATH=packages/ai-harness/src python3 -m spec_harness run \
+PYTHONPATH=packages/ai-harness/src python3 -m cli run \
   --feature "Your feature request" \
   --repo /path/to/target-project \
   --config harness.yaml

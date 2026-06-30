@@ -2,7 +2,7 @@
 
 ## Phạm Vi
 
-Report này chỉ đánh giá `AINative_OKR_Claude_GHCP` theo tiêu chuẩn harness độc lập.
+Report này đánh giá `AINative_OKR_Claude_GHCP` theo  tiêu chuẩn harness engineering.
 
 Mục tiêu là trả lời 3 câu hỏi:
 
@@ -936,7 +936,6 @@ stateDiagram-v2
 ```
 
 Nếu chưa có mô hình adapter đa executor, trigger-action framework, interaction channels đa dạng, và state machine provider-agnostic như trên thì chưa đạt mức harness vận hành chung.
-
 
 ## Nguồn Tham Chiếu
 

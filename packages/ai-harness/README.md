@@ -1,16 +1,23 @@
 # AI Harness Engine
 
-This package contains the Python harness engine and CLI. The command entrypoint is still `harness`, and the Python module is still `spec_harness` for compatibility with the existing implementation.
+This package contains the Python harness engine and CLI. The installed command entrypoint is `harness`; source modules live directly under `src/` by harness layer.
 
 ## Contents
 
 | Path | Role |
 | --- | --- |
-| `src/spec_harness/cli.py` | CLI entrypoint |
-| `src/spec_harness/orchestrator.py` | H7 phase state machine, retry, resume, escalation |
-| `src/spec_harness/agent.py` | Provider dispatcher for Claude Code and Codex CLI |
-| `src/spec_harness/gates.py` | H3 deterministic gates |
-| `src/spec_harness/state.py` | Run state persistence |
+| `docs/ARCHITECTURE_DESIGN.md` | Detailed source architecture and runtime design |
+| `src/interfaces/cli.py` | CLI entrypoint |
+| `src/core/config.py` | Config contracts and YAML loading |
+| `src/context/builder.py` | Context packet and manifest builder |
+| `src/tool/agent_runner.py` | Provider dispatcher for Claude Code and Codex CLI |
+| `src/evaluation/gates.py` | Deterministic gates |
+| `src/security/secret_scanner.py` | Secret scan primitive |
+| `src/governance/escalation.py` | Escalation policy |
+| `src/agentops/storage.py` | Postgres persistence for state and artifacts |
+| `src/agentops/state_store.py` | DB-backed run state facade |
+| `src/agentops/db_logger.py` | Structured phase/gate logging |
+| `src/orchestration/orchestrator.py` | Phase state machine, retry, resume |
 | `harness.sdlc.yaml` | Generic SDLC pipeline template |
 | `harness.yaml` | Spec-kit-oriented pipeline |
 | `evals/` | Golden-case eval harness |
@@ -21,16 +28,20 @@ This package contains the Python harness engine and CLI. The command entrypoint 
 pip install -e ./packages/ai-harness
 ```
 
+## Persistence
+
+Harness run state, context packets, manifests, logs, gate reports, and escalation artifacts are stored in Postgres. Set `DATABASE_URL` or `HARNESS_DB_URL` before running the CLI.
+
 Or run without installing:
 
 ```bash
-PYTHONPATH=packages/ai-harness/src python3 -m spec_harness --help
+PYTHONPATH=packages/ai-harness/src python3 -m cli --help
 ```
 
 ## Run Against A Target Project
 
 ```bash
-PYTHONPATH=packages/ai-harness/src python3 -m spec_harness run \
+PYTHONPATH=packages/ai-harness/src python3 -m cli run \
   --feature "Add secure multi-agent review workflow" \
   --repo examples/todo-app \
   --config harness.codex.yaml

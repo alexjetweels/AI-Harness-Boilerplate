@@ -109,8 +109,12 @@ target-project/
 The missing harness/runtime pieces are:
 
 ```text
+packages/ai-harness/targets/okr-ghcp/
+  harness.okr.yaml          present
+  harness.okr.boss.yaml     present
+  commands/*                present
+
 target-project/
-  harness.okr.yaml          missing
   backend/                  missing
   frontend/                 missing
   docker-compose.yml        missing
@@ -137,10 +141,10 @@ The implementation is strongest in orchestration and deterministic gates. Contex
 
 ## Mapping Needed For The OKR Website
 
-Add an OKR-specific harness config in the imported folder:
+The OKR-specific harness config is package-owned:
 
 ```text
-AINative_OKR_Claude_GHCP/harness.okr.yaml
+packages/ai-harness/targets/okr-ghcp/harness.okr.yaml
 ```
 
 Start with one of these modes:
@@ -156,7 +160,7 @@ Recommended first pass: Boss mode. It keeps the imported flow intact while provi
 
 | Gap | Why it matters | Fix |
 | --- | --- | --- |
-| No OKR harness config | Harness cannot run the imported flow directly | Add `harness.okr.yaml` |
+| No target-owned OKR harness config | Intentional: target source should stay unchanged | Keep adapter under `packages/ai-harness/targets/okr-ghcp/` |
 | No generated app code yet | Build/test gates have nothing to run | Scaffold the app in `backend/` and `frontend/` |
 | No project scripts | Shell gates cannot verify implementation | Add npm scripts for build, typecheck, lint, test |
 | No Docker stack | Target architecture requires local Docker runtime | Add `docker-compose.yml` and Dockerfiles |
@@ -202,7 +206,7 @@ AINative_OKR_Claude_GHCP/
 
 The next milestone should be target onboarding for `AINative_OKR_Claude_GHCP/`:
 
-1. Create `harness.okr.yaml`.
+1. Keep `harness.okr.yaml` in `packages/ai-harness/targets/okr-ghcp/`.
 2. Register the OKR folder as a dashboard target.
 3. Add initial Boss-mode gates for generated docs and final app health.
 4. Scaffold backend/frontend/Docker source inside the OKR folder.

@@ -1,7 +1,8 @@
-"""PostgreSQL database connection and schema initialisation.
+"""PostgreSQL database connection and Alembic-managed schema migrations.
 
-Uses psycopg2 (sync) so it works inside FastAPI startup events and
-also inside the harness subprocess without requiring an asyncio loop.
+Uses psycopg2 (sync) for runtime queries and SQLAlchemy+Alembic for schema
+versioning. Schema changes must go through a versioned migration in
+alembic/versions/ — never alter the database directly in application code.
 
 Environment:
     DATABASE_URL  – full libpq DSN, e.g.
@@ -12,6 +13,7 @@ from __future__ import annotations
 import os
 import threading
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Generator
 
 import psycopg2
@@ -20,72 +22,6 @@ from psycopg2.pool import ThreadedConnectionPool
 
 _pool: ThreadedConnectionPool | None = None
 _lock = threading.Lock()
-
-
-# ── DDL ───────────────────────────────────────────────────────────────────────
-
-_DDL = """
-CREATE TABLE IF NOT EXISTS harness_runs (
-    run_id          TEXT        PRIMARY KEY,
-    feature         TEXT        NOT NULL,
-    provider        TEXT        NOT NULL DEFAULT 'codex',
-    tech_stack      TEXT        NOT NULL DEFAULT '',
-    target          TEXT        NOT NULL DEFAULT 'todo-app',
-    target_repo     TEXT        NOT NULL DEFAULT '',
-    status          TEXT        NOT NULL DEFAULT 'queued',
-    created_at      DOUBLE PRECISION NOT NULL,
-    started_at      DOUBLE PRECISION,
-    finished_at     DOUBLE PRECISION,
-    cost_usd        DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-    current_phase   TEXT,
-    feature_dir     TEXT,
-    log_path        TEXT        NOT NULL DEFAULT '',
-    pid             INTEGER,
-    return_code     INTEGER,
-    command         TEXT
-);
-
-CREATE TABLE IF NOT EXISTS phase_events (
-    id              BIGSERIAL   PRIMARY KEY,
-    run_id          TEXT        NOT NULL REFERENCES harness_runs(run_id) ON DELETE CASCADE,
-    phase_name      TEXT        NOT NULL,
-    attempt         INTEGER     NOT NULL DEFAULT 1,
-    status          TEXT        NOT NULL DEFAULT 'running',
-    started_at      DOUBLE PRECISION NOT NULL,
-    finished_at     DOUBLE PRECISION,
-    gate_result     TEXT,
-    prompt_snippet  TEXT,
-    agent_ok        BOOLEAN,
-    cost_usd        DOUBLE PRECISION NOT NULL DEFAULT 0.0
-);
-
-CREATE TABLE IF NOT EXISTS gate_outcomes (
-    id              BIGSERIAL   PRIMARY KEY,
-    run_id          TEXT        NOT NULL REFERENCES harness_runs(run_id) ON DELETE CASCADE,
-    phase_name      TEXT        NOT NULL,
-    attempt         INTEGER     NOT NULL DEFAULT 1,
-    gate_name       TEXT        NOT NULL,
-    gate_type       TEXT        NOT NULL DEFAULT '',
-    passed          BOOLEAN     NOT NULL,
-    report          TEXT        NOT NULL DEFAULT '',
-    checked_at      DOUBLE PRECISION NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS run_events (
-    id              BIGSERIAL   PRIMARY KEY,
-    run_id          TEXT        NOT NULL REFERENCES harness_runs(run_id) ON DELETE CASCADE,
-    event_type      TEXT        NOT NULL,
-    phase           TEXT,
-    message         TEXT        NOT NULL DEFAULT '',
-    payload         JSONB,
-    occurred_at     DOUBLE PRECISION NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_phase_events_run_id    ON phase_events(run_id);
-CREATE INDEX IF NOT EXISTS idx_gate_outcomes_run_id   ON gate_outcomes(run_id);
-CREATE INDEX IF NOT EXISTS idx_run_events_run_id      ON run_events(run_id);
-CREATE INDEX IF NOT EXISTS idx_run_events_occurred_at ON run_events(run_id, occurred_at);
-"""
 
 
 # ── Pool management ───────────────────────────────────────────────────────────
@@ -125,11 +61,20 @@ def get_conn() -> Generator[psycopg2.extensions.connection, None, None]:
         pool.putconn(conn)
 
 
-# ── Schema bootstrap ──────────────────────────────────────────────────────────
+# ── Alembic migration runner ──────────────────────────────────────────────────
+
+def run_migrations() -> None:
+    """Apply all pending Alembic migrations. Safe to call on every startup."""
+    from alembic.config import Config
+    from alembic import command
+
+    ini_path = Path(__file__).resolve().parents[1] / "alembic.ini"
+    alembic_cfg = Config(str(ini_path))
+    command.upgrade(alembic_cfg, "head")
+    print("✅ Database migrations applied (Alembic)")
+
+
+# ── Back-compat alias so any code still calling init_db() keeps working ───────
 
 def init_db() -> None:
-    """Create tables if they do not exist. Idempotent — safe to call on every startup."""
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(_DDL)
-    print("✅ Database schema initialised (PostgreSQL)")
+    run_migrations()

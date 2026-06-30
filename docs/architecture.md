@@ -1,241 +1,180 @@
-# AI SDLC Harness Architecture
+# AI Harness Architecture By Folder
 
-This repository is now a harness workspace for building the real OKR web application from the imported source package:
+## Purpose
+
+This repository is an AI SDLC Harness workspace. The harness is the outer control plane. Target folders, such as `AINative_OKR_Claude_GHCP/`, provide inner prompts, agents, requirements, and product-specific source.
+
+The architecture uses this pattern:
 
 ```text
-AINative_OKR_Claude_GHCP/
+Outer AI Harness Control Plane
+  -> target adapter
+  -> target prompt/agent system
+  -> generated SDLC artifacts and app code
+  -> deterministic gates
+  -> Postgres state, logs, metrics, and artifacts
 ```
 
-The imported folder is not yet the OKR app implementation. It is the real OKR agent, prompt, Spec-Kit, requirements, and architecture source that should drive the future app build inside that folder.
-
-## Current Workspace Shape
+## Root Structure
 
 ```text
-apps/
-  dashboard/
-    backend/              FastAPI API for launching and observing harness runs
-    frontend/             React dashboard for non-terminal harness users
-
-packages/
-  ai-harness/             Python harness engine, CLI, phase configs, gates
-
-AINative_OKR_Claude_GHCP/
-  .claude/
-    agents/               Claude Code agent definitions
-    commands/             Claude Code slash command wrappers
-  .github/
-    agents/               GitHub Copilot agent mirror
-    prompts/              GitHub Copilot prompt wrappers
-  .specify/
-    memory/               Spec-Kit constitution
-    scripts/              Spec-Kit helper scripts
-    templates/            Spec, plan, tasks, SRS, BD, DD templates
+AI-Harness-Boilerplate/
+  apps/
+  packages/
+  harness/
+  AINative_OKR_Claude_GHCP/
   docs/
-    input/                OKR requirements and change requests
-    technical_architecture.md
-
-docs/
-  architecture.md         This architecture and gap map
-  template-overview.md    Practical template overview
+  docker-compose.yml
+  .env.example
 ```
 
-The old `templates/claude-sdlc/` and `examples/todo-app/` paths are no longer present in the working tree. The docs should treat `AINative_OKR_Claude_GHCP/` as the primary target project source.
-
-## Mental Model
-
-There are two orchestration layers:
-
-```text
-User / Dashboard / CLI
-        |
-        v
-AI Harness control plane
-  - run state
-  - provider execution
-  - deterministic gates
-  - logs and escalation
-        |
-        v
-Target project agent flow
-  - AINative_OKR_Claude_GHCP/.claude/commands/*
-  - AINative_OKR_Claude_GHCP/.claude/agents/*
-  - AINative_OKR_Claude_GHCP/.specify/*
-        |
-        v
-Generated OKR application code and artifacts
-```
-
-The harness should remain the outer control plane. The imported OKR `okr.bossbuiltin` agent can remain the inner domain-specific flow, but the harness needs a configuration that understands its phases and output artifacts.
-
-## Imported OKR Source
-
-The imported source contains a complete AI-SDLC prompt system:
-
-| Area | Source | Purpose |
-| --- | --- | --- |
-| Claude commands | `AINative_OKR_Claude_GHCP/.claude/commands/` | Slash command entrypoints such as `/okr.bossbuiltin`, `/speckit.specify`, `/speckit.plan`, `/speckit.implement` |
-| Claude agents | `AINative_OKR_Claude_GHCP/.claude/agents/` | Full agent definitions for OKR, review, test, and Spec-Kit flow |
-| Shared protocols | `AINative_OKR_Claude_GHCP/.claude/agents/protocols/` | Retry, report gate, timestamp, logging, context, and delegation protocols |
-| Step definitions | `AINative_OKR_Claude_GHCP/.claude/agents/steps/` | Grouped orchestration instructions for steps 01-13 |
-| Output templates | `AINative_OKR_Claude_GHCP/.claude/agents/templates/` | Pipeline completion and report templates |
-| GitHub Copilot mirror | `AINative_OKR_Claude_GHCP/.github/agents/` and `.github/prompts/` | Agent/prompt equivalents for GHCP workflows |
-| Spec-Kit runtime | `AINative_OKR_Claude_GHCP/.specify/` | Constitution, feature scripts, and artifact templates |
-| OKR requirements | `AINative_OKR_Claude_GHCP/docs/input/okr-requirement.md` | Main functional source input |
-| Change requests | `AINative_OKR_Claude_GHCP/docs/input/change-request/` | Incremental scope changes |
-| App architecture | `AINative_OKR_Claude_GHCP/docs/technical_architecture.md` | Target OKR web app architecture |
-
-The OKR app architecture currently targets:
-
-| Layer | Target |
+| Folder | Role |
 | --- | --- |
-| Frontend | React 18, Vite 5, React Router, TanStack Query, Axios, React Hook Form, Zod, Tailwind CSS |
-| Backend | Node.js 20, NestJS 10, Prisma 5, JWT auth, bcrypt, Swagger |
-| Database | MySQL 8 with Prisma migrations and seed data |
-| Runtime | Docker Compose with MySQL, backend, frontend, and Adminer |
+| `apps/` | User-facing dashboard and API for launching and observing harness runs |
+| `packages/ai-harness/` | Reusable harness engine |
+| `harness/` | Harness architecture blueprint, H1-H7 policies, target registry |
+| `AINative_OKR_Claude_GHCP/` | First target project: imported OKR prompt/agent/Spec-Kit source |
+| `docs/` | Architecture, flow, and operating documentation |
+| `docker-compose.yml` | Shared infrastructure, especially Postgres for harness persistence |
 
-## Imported OKR Flow
+## `packages/ai-harness/`
 
-The OKR source defines a 13-step AI-SDLC flow orchestrated by `okr.bossbuiltin`:
-
-| Step | Agent | Main output |
-| --- | --- | --- |
-| 1 | `okr.srs` | IPA SRS documents |
-| 2 | `okr.bd` | Basic Design documents |
-| 3 | `speckit.specify` | `spec.md` |
-| 4 | `speckit.clarify` | Ambiguity resolution |
-| 5 | `okr.reviewspec` | Spec review and retry feedback |
-| 6 | `speckit.plan` | `plan.md`, data model, contracts |
-| 7 | `okr.reviewplan` | Plan review and retry feedback |
-| 8 | `okr.dd` | Detail Design documents |
-| 8b | `okr.testkit` | Generated test cases |
-| 9 | `speckit.tasks` | `tasks.md` |
-| 10 | `speckit.implement` | Application code with build/fix loop |
-| 11 | `okr.reviewcode` | Code review and DB data check |
-| 12 | `okr.testkit` | Test execution with back-to-plan behavior |
-| 13 | Boss direct step | Build backend, connect DB, build frontend, launch UI |
-
-This flow is richer than the generic SDLC flow previously documented in this repo.
-
-## Harness Standard
-
-The current harness standard is implemented in:
+Reusable Python harness engine. Source code lives directly under `src/` and is split by harness-engineering layer so each concern has an obvious home.
 
 ```text
-packages/ai-harness/src/spec_harness/
-  cli.py
-  config.py
-  state.py
-  orchestrator.py
-  agent.py
-  gates.py
-  db_logger.py
+packages/ai-harness/
+  pyproject.toml
+  README.md
+  harness.yaml
+  harness.sdlc.yaml
+  evals/
+  src/
+    cli.py
+    __main__.py
+    core/
+      config.py
+    interfaces/
+      cli.py
+    context/
+      builder.py
+    tool/
+      agent_runner.py
+    evaluation/
+      gates.py
+    security/
+      secret_scanner.py
+    governance/
+      escalation.py
+    agentops/
+      storage.py
+      state_store.py
+      db_logger.py
+    orchestration/
+      orchestrator.py
 ```
 
-The current harness expects:
+| File | Layer | Responsibility |
+| --- | --- | --- |
+| `src/interfaces/cli.py` | Interface/H7 | CLI entrypoint: `run`, `resume`, `status` |
+| `src/core/config.py` | Core | Load target adapter YAML and phase definitions |
+| `src/context/builder.py` | H1 | Build controlled context packet and manifest |
+| `src/tool/agent_runner.py` | H2 | Provider adapter for Claude Code and Codex CLI |
+| `src/evaluation/gates.py` | H3 | Deterministic verification gates |
+| `src/security/secret_scanner.py` | H4 | Secret scanning primitive used by security gates |
+| `src/governance/escalation.py` | H5 | Escalation policy for failed phases |
+| `src/agentops/storage.py` | H6 | Postgres schema and persistence for state/artifacts |
+| `src/agentops/state_store.py` | H6 | DB-backed run state facade |
+| `src/agentops/db_logger.py` | H6 | Phase, gate, and event logging into Postgres |
+| `src/orchestration/orchestrator.py` | H7 | Phase loop, retry, resume, cost updates |
+
+CLI execution:
+
+```powershell
+$env:PYTHONPATH='packages/ai-harness/src'
+python -m cli run `
+  --repo .\AINative_OKR_Claude_GHCP `
+  --config .\packages\ai-harness\targets\okr-ghcp\harness.okr.yaml `
+  --feature "Build the OKR web application"
+```
+
+## `harness/`
+
+Reusable architecture blueprint. This folder is not target implementation code; it documents and standardizes the harness pattern.
 
 ```text
-target-project/
+harness/
+  README.md
+  layers/
+    H1-context/policy.md
+    H2-tool/policy.md
+    H3-evaluation/policy.md
+    H4-security/policy.md
+    H5-governance/policy.md
+    H6-agentops/policy.md
+    H7-orchestration/policy.md
+  targets/
+    okr-ghcp/target.yaml
+```
+
+| Folder | Purpose |
+| --- | --- |
+| `layers/H1-context/` | Context contracts, packets, manifests, injection, assertions |
+| `layers/H2-tool/` | Tool/runtime policy and command boundaries |
+| `layers/H3-evaluation/` | Artifact, marker, shell, and review gates |
+| `layers/H4-security/` | Secret scan, dependency audit, prompt/context safety |
+| `layers/H5-governance/` | Retry limits, escalation, approval boundaries |
+| `layers/H6-agentops/` | Cost, logs, metrics, traces, run observability |
+| `layers/H7-orchestration/` | Phase graph, resume, repair, boss/expanded modes |
+| `targets/okr-ghcp/` | Registry metadata for the OKR target |
+
+## `AINative_OKR_Claude_GHCP/`
+
+First harness target. This folder is an inner AI-SDLC source package, not the reusable harness engine.
+
+```text
+AINative_OKR_Claude_GHCP/
   CLAUDE.md
-  .claude/commands/*.md
-  .specify/state/
-  .specify/runs/
-  harness.yaml or another selected harness config
-  project build/typecheck/lint/test/security/acceptance commands
+  README.md
+  .claude/
+    commands/
+    agents/
+      protocols/
+      steps/
+      templates/
+  .github/
+    prompts/
+    agents/
+  .specify/
+    memory/
+    scripts/
+    templates/
+  docs/
+    input/
+      okr-requirement.md
+      change-request/
+    technical_architecture.md
 ```
 
-Current supported providers:
-
-| Provider | Implementation |
+| Path | Role |
 | --- | --- |
-| Claude Code | `claude -p --output-format json` |
-| Codex CLI | `codex exec --json`; slash commands are inlined from `.claude/commands/*.md` |
+| `.claude/commands/` | Slash command wrappers invoked by the harness |
+| `.claude/agents/` | Inner specialist agents for OKR SDLC work |
+| `.claude/agents/protocols/` | Agent-level protocols for retry, reporting, logging, context, delegation |
+| `.claude/agents/steps/` | Imported 13-step OKR SDLC instructions |
+| `.github/` | GitHub Copilot mirror of prompts and agents |
+| `.specify/` | Spec-Kit memory, scripts, and templates |
+| `docs/input/` | Business requirements and change requests |
+| `docs/technical_architecture.md` | Intended OKR web app architecture |
 
-Current gates:
+Package-owned OKR adapters live under `packages/ai-harness/targets/okr-ghcp/`:
 
-| Gate type | Purpose |
+| Path | Role |
 | --- | --- |
-| `shell` | Run a command and pass on exit code `0` |
-| `glob_nonempty` | Require matching artifact files |
-| `no_markers` | Fail if generated artifacts still contain markers such as `TBD` |
-| `agent_output` | Fail if agent output contains configured blocking markers |
+| `harness.okr.yaml` | Expanded target adapter; harness owns phase-by-phase orchestration |
+| `harness.okr.boss.yaml` | Boss-mode target adapter; harness calls `/okr.bossbuiltin` then gates final output |
+| `commands/` | Harness fallback command wrappers missing from the imported source |
 
-Current state and run outputs:
-
-```text
-.specify/state/<run-id>.json
-.specify/runs/<run-id>/*.log
-.specify/runs/<run-id>/ESCALATION.md
-```
-
-## Harness Fit Check For `AINative_OKR_Claude_GHCP`
-
-| Standard item | OKR source status | Fit |
-| --- | --- | --- |
-| `CLAUDE.md` | Present | Good |
-| `.claude/commands/*.md` | Present, OKR/Spec-Kit commands | Good |
-| `.claude/agents/*.md` | Present, much richer than generic template | Good |
-| `.specify/memory/constitution.md` | Present | Good |
-| `.specify/scripts/*` | Present for Bash and PowerShell | Good |
-| `.specify/templates/*` | Present | Good |
-| App source code | Not present yet | Gap |
-| Target `harness.yaml` inside OKR folder | Not present | Gap |
-| Project build/typecheck/lint/test commands | Documented in target architecture, not implemented | Gap |
-| Harness phase mapping to OKR 13-step flow | Not present | Gap |
-| Deterministic artifact gates for OKR outputs | Not present | Gap |
-| Dashboard target registration for OKR folder | Not confirmed | Gap |
-| Real Docker Compose app stack | Described in docs, not implemented | Gap |
-
-Conclusion: `AINative_OKR_Claude_GHCP/` is close to the harness target-project standard for prompts and agent flow, but it is not yet runnable as a harness target because it lacks a project-level harness config, app code, package files, Docker stack, and concrete verification commands.
-
-## Required Mapping
-
-The generic harness phases should be replaced or extended with an OKR-specific mapping.
-
-| Harness phase | OKR command | Expected gate |
-| --- | --- | --- |
-| `system-srs` | `/okr.srs.getsrsall` or direct `/okr.srsallsystem` command if added | `docs/output/srs-systems/**` exists |
-| `srs` | `/okr.srs` | `docs/output/ipa-docs/srs/**` exists |
-| `basic-design` | `/okr.bd` | `docs/output/ipa-docs/bd/**` exists |
-| `specify` | `/speckit.specify {feature}` | `specs/*/spec.md` exists |
-| `clarify` | `/speckit.clarify` | no `[NEEDS CLARIFICATION]` markers in `spec.md` |
-| `review-spec` | `/okr.reviewspec` | no blocking review markers |
-| `plan` | `/speckit.plan {tech_stack}` | `specs/*/plan.md` exists |
-| `review-plan` | `/okr.reviewplan` | no blocking plan markers |
-| `detail-design` | `/okr.dd` | `docs/output/ipa-docs/dd/**` exists |
-| `generate-tests` | `/okr.testkit gen-testcases` | `docs/output/ipa-docs/testcase/**` exists |
-| `tasks` | `/speckit.tasks` | `specs/*/tasks.md` exists |
-| `implement` | `/speckit.implement` | app build/typecheck/lint/test pass |
-| `review-code` | `/okr.reviewcode` | no blocking code-review markers |
-| `run-tests` | `/okr.testkit run-tests` | test report exists and automated tests pass |
-| `launch` | `/okr.bossbuiltin` step 13 or a dedicated command | Docker services build and app is reachable |
-
-There are two viable integration modes:
-
-| Mode | Description | Recommendation |
-| --- | --- | --- |
-| Boss mode | Harness runs one phase: `/okr.bossbuiltin`, then gates final artifacts | Fastest path to use the imported flow |
-| Expanded mode | Harness owns each OKR step as a separate phase | Better observability, retry control, dashboard visibility |
-
-Use Boss mode first to preserve the imported flow, then evolve to Expanded mode when the dashboard needs per-step visibility.
-
-## Seven Harness Components
-
-| ID | Component | Current implementation | OKR integration need |
-| --- | --- | --- | --- |
-| H1 | Context Harness | Static prompt/context via commands and project files | Build an OKR context packet from `docs/input`, change requests, `technical_architecture.md`, `.specify/memory`, prior outputs |
-| H2 | Tool Harness | Provider CLI flags and shell gates | Add tool policy/audit around Docker, npm, Prisma, and browser launch commands |
-| H3 | Evaluation Harness | Shell, glob, marker, agent-output gates | Add OKR artifact gates and app gates for NestJS, React, Prisma, Docker, and Playwright |
-| H4 | Security Harness | Not separately implemented | Add secret scan, dependency audit, auth/RBAC checks, prompt injection checks for imported docs |
-| H5 | Governance Harness | Escalation artifact only | Add approval/risk policy for DB resets, migrations, destructive commands, and release launch |
-| H6 | AgentOps Harness | Basic cost aggregation from provider output | Track per-agent cost/latency/retries for OKR steps |
-| H7 | Orchestration Harness | Sequential phases, retry, resume, escalation | Add OKR-specific phase config and dashboard target support |
-
-## Immediate Gaps To Fix Before Coding The OKR Website
-
-1. Add an OKR harness config, likely `AINative_OKR_Claude_GHCP/harness.okr.yaml`, that points phases to OKR commands and gates.
-2. Decide whether first run uses Boss mode or Expanded mode.
-3. Add or normalize command wrappers for any commands referenced by the flow but not directly present as slash commands.
-4. Define the application source layout inside `AINative_OKR_Claude_GHCP/`:
+Expected generated app layout:
 
 ```text
 AINative_OKR_Claude_GHCP/
@@ -246,57 +185,178 @@ AINative_OKR_Claude_GHCP/
   docker-compose.test.yml
 ```
 
-5. Add project verification commands once app scaffolding exists:
+## `apps/dashboard/`
 
-```yaml
-project:
-  build: "docker compose build"
-  typecheck: "docker compose run --rm backend npm run typecheck && docker compose run --rm frontend npm run typecheck"
-  lint: "docker compose run --rm backend npm run lint && docker compose run --rm frontend npm run lint"
-  test: "docker compose run --rm backend npm test && docker compose run --rm frontend npm test"
-  security: "docker compose run --rm backend npm audit --audit-level=high && docker compose run --rm frontend npm audit --audit-level=high"
-  acceptance: "docker compose -f docker-compose.yml -f docker-compose.test.yml up --abort-on-container-exit"
-```
-
-6. Register `AINative_OKR_Claude_GHCP/` as a dashboard target so runs can be launched from the UI.
-7. Add deterministic gates for generated IPA documents, Spec-Kit artifacts, Docker health, seeded data, Swagger, and frontend reachability.
-8. Preserve imported agent files as source-of-truth until an intentional migration is made.
-
-## Recommended Build Order
-
-1. **OKR harness config**
-   Create the minimum Boss-mode config and confirm the harness can invoke `/okr.bossbuiltin` from `AINative_OKR_Claude_GHCP/`.
-
-2. **Dashboard target**
-   Point the dashboard target selector at `AINative_OKR_Claude_GHCP/`.
-
-3. **App scaffold**
-   Create `backend/`, `frontend/`, Docker files, Prisma schema, seed script, and package scripts inside the OKR folder.
-
-4. **Verification commands**
-   Wire build, typecheck, lint, test, security, and acceptance commands into the OKR harness config.
-
-5. **Expanded phase mode**
-   Split `okr.bossbuiltin` into harness-visible phases for better run logs and retry behavior.
-
-6. **Security and governance**
-   Add DB reset policy, secret checks, dependency audit, auth/RBAC verification, and approval artifacts.
-
-7. **AgentOps**
-   Record per-agent metrics and expose them in the dashboard.
-
-## Target End State
+Dashboard-first control surface.
 
 ```text
-Dashboard or CLI
-  -> selected target: AINative_OKR_Claude_GHCP
-  -> selected provider: Claude Code or Codex
-  -> selected mode: boss or expanded
-  -> harness creates run state
-  -> harness invokes OKR agent flow
-  -> OKR app code is generated/changed in backend + frontend
-  -> Docker/MySQL/NestJS/React gates run
-  -> docs, logs, cost, gates, and app status appear in dashboard
+apps/dashboard/
+  backend/
+    app/
+      main.py
+      db.py
+      db_logger.py
+  frontend/
+    src/
+      main.jsx
+      styles.css
 ```
 
-At that point, the imported source becomes a real harness target rather than only a Claude/GHCP prompt package.
+| Path | Role |
+| --- | --- |
+| `backend/app/main.py` | FastAPI endpoints for targets, runs, phases, gates, events |
+| `backend/app/db.py` | Postgres connection and schema bootstrap |
+| `backend/app/db_logger.py` | API-side query helpers for run state, artifacts, logs |
+| `frontend/src/main.jsx` | React UI for target/mode/provider selection and run observation |
+
+Dashboard target flow:
+
+```text
+Frontend form
+  -> POST /api/harness-runs
+  -> backend spawns `python -m cli run`
+  -> harness writes state/artifacts/events to Postgres
+  -> frontend polls latest run data from API
+```
+
+## `docs/`
+
+Architecture and operating documents.
+
+```text
+docs/
+  architecture.md
+  ai-sdlc-harness-flow-understanding.md
+  ai-sdlc-harness-wrapper-architecture.md
+  template-overview.md
+  okr-harness-7-level-report.md
+```
+
+| File | Purpose |
+| --- | --- |
+| `architecture.md` | Current folder-by-folder architecture |
+| `ai-sdlc-harness-flow-understanding.md` | Plain-language flow understanding |
+| `ai-sdlc-harness-wrapper-architecture.md` | Wrapper pattern and implementation summary |
+| `template-overview.md` | Practical project overview |
+| `okr-harness-7-level-report.md` | Existing report; currently has local edits outside this architecture rewrite |
+
+## Postgres Persistence
+
+The harness no longer uses `.specify/state/*.json` or `.specify/runs/*.log` as primary persistence.
+
+Required environment:
+
+```text
+DATABASE_URL=postgresql://...
+```
+
+or:
+
+```text
+HARNESS_DB_URL=postgresql://...
+```
+
+Primary tables:
+
+| Table | Role |
+| --- | --- |
+| `harness_runs` | Run metadata: feature, provider, target, mode, status, cost |
+| `harness_run_state` | Current resumable state JSON |
+| `harness_artifacts` | Context packets, manifests, phase logs, gate logs, escalations |
+| `phase_events` | Phase start/done timeline |
+| `gate_outcomes` | Gate pass/fail records |
+| `run_events` | General event stream for dashboard and audit |
+
+## H1-H7 Placement By Folder
+
+| Layer | Primary folder/file | Notes |
+| --- | --- | --- |
+| H1 Context Harness | `packages/ai-harness/src/context/`, `harness/layers/H1-context/` | Builds DB-backed context packet and manifest |
+| H2 Tool Harness | `packages/ai-harness/src/tool/`, `harness/layers/H2-tool/` | Provider and tool policy boundary |
+| H3 Evaluation Harness | `packages/ai-harness/src/evaluation/`, target adapter gates | Deterministic phase gates |
+| H4 Security Harness | `packages/ai-harness/src/security/`, `harness/layers/H4-security/` | Secret scan and security commands |
+| H5 Governance Harness | `packages/ai-harness/src/governance/`, `harness/layers/H5-governance/` | Escalation and approval boundary |
+| H6 AgentOps Harness | `packages/ai-harness/src/agentops/`, dashboard DB helpers | State, metrics, artifacts, logs |
+| H7 Orchestration Harness | `packages/ai-harness/src/orchestration/`, target `harness.*.yaml` | Phase graph, retry, and modes |
+
+## Runtime Flow
+
+```mermaid
+flowchart TD
+    U[User] --> UI[Dashboard or CLI]
+    UI --> CFG[Target adapter YAML]
+    CFG --> H1[H1 context/builder.py]
+    H1 --> DB[(Postgres)]
+    CFG --> H7[H7 orchestration/orchestrator.py]
+    H7 --> H2[H2 tool/agent_runner.py]
+    H2 --> IA[Inner OKR agents/prompts]
+    IA --> OUT[Generated docs/code]
+    OUT --> H3[H3 evaluation/gates.py]
+    OUT --> H4[H4 security gates]
+    H3 --> DB
+    H4 --> DB
+    H7 --> H5[H5 escalation/retry]
+    H5 --> DB
+    DB --> H6[H6 AgentOps/API]
+    H6 --> UI
+```
+
+## Target Adapter Contract
+
+Every reusable target should provide:
+
+```text
+target-project/
+  harness.<target>.yaml
+  CLAUDE.md or equivalent guidance
+  prompt/agent files if agent-driven
+  source requirements and architecture docs
+  project build/test/security commands
+```
+
+Minimum adapter sections:
+
+```yaml
+target:
+  id: example-target
+  name: Example Target
+
+context:
+  sources:
+    - { path: "CLAUDE.md", role: "target-guidance", required: true }
+
+agent:
+  provider: codex
+
+project:
+  build: "..."
+  test: "..."
+  security: "..."
+
+phases:
+  - name: H1-context
+    gates: [...]
+  - name: implement
+    command: "/some.command {feature}"
+    gates: [...]
+```
+
+## Current Architecture Status
+
+Completed:
+
+- Layered engine code under `packages/ai-harness/src`
+- OKR expanded and boss target adapters
+- H1 context packet/manifest stored in Postgres
+- DB-backed run state and artifacts
+- Dashboard target/mode support
+- Deterministic gates including DB artifact existence and secret scan
+- Missing OKR command wrappers for `okr.bd`, `okr.dd`, `okr.reviewplan`, `okr.testkit`
+
+Still to harden:
+
+- Full H2 command allow/deny enforcement before shell gates
+- Phase-specific context contracts instead of one broad run context
+- Context assertions that prove output used required inputs
+- Approval artifacts for destructive database/runtime operations
+- Richer AgentOps metrics: token counts, latency, retry analytics, context coverage
