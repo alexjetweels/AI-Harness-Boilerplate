@@ -89,7 +89,9 @@ def phase_started(run_id: str, phase_name: str, attempt: int,
 
 def phase_done(run_id: str, phase_name: str, attempt: int,
                status: str, gate_result: str,
-               agent_ok: bool | None = None, cost_usd: float = 0.0) -> None:
+               agent_ok: bool | None = None, cost_usd: float = 0.0,
+               model: str = "", input_tokens: int = 0,
+               output_tokens: int = 0, total_tokens: int = 0) -> None:
     if not _available():
         return
     try:
@@ -99,15 +101,28 @@ def phase_done(run_id: str, phase_name: str, attempt: int,
                     """
                     UPDATE phase_events
                        SET status = %s, gate_result = %s,
-                           agent_ok = %s, cost_usd = %s, finished_at = %s
+                           agent_ok = %s, cost_usd = %s,
+                           model = %s,
+                           input_tokens = %s,
+                           output_tokens = %s,
+                           total_tokens = %s,
+                           finished_at = %s
                      WHERE run_id = %s AND phase_name = %s AND attempt = %s
                     """,
                     (status, gate_result, agent_ok, cost_usd,
+                     model, input_tokens, output_tokens, total_tokens,
                      time.time(), run_id, phase_name, attempt),
                 )
         _emit(run_id, "phase_done", phase_name,
               f"Phase '{phase_name}' attempt {attempt} → {status} (gate: {gate_result})",
-              {"cost_usd": cost_usd, "agent_ok": agent_ok})
+              {
+                  "cost_usd": cost_usd,
+                  "agent_ok": agent_ok,
+                  "model": model,
+                  "input_tokens": input_tokens,
+                  "output_tokens": output_tokens,
+                  "total_tokens": total_tokens,
+              })
     except Exception as exc:
         print(f"[harness db_logger] phase_done: {exc}")
 

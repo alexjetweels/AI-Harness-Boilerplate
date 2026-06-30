@@ -73,3 +73,5 @@ coverage/
 
 # VS Code workspace settings
 *.code-workspace
+
+.poetry-cache/

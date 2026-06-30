@@ -20,6 +20,10 @@ class AgentResult:
     session_id: str | None
     cost: float
     raw: object
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    model: str | None = None
 
 
 def run(agent_cfg, prompt: str, resume_session: str | None = None, cwd: str = ".",
@@ -47,6 +51,7 @@ def _run_claude(agent_cfg, prompt: str, resume_session: str | None = None, cwd: 
     argv = [
         _agent_bin(agent_cfg, "claude"), "-p", prompt,
         "--output-format", "stream-json",
+        "--verbose",
         "--max-turns", str(agent_cfg.max_turns),
         "--allowedTools", agent_cfg.allowed_tools,
     ]
@@ -70,9 +75,14 @@ def _run_claude(agent_cfg, prompt: str, resume_session: str | None = None, cwd: 
         return AgentResult(False, f"claude binary not found: {argv[0]}", None, 0.0, {})
 
     lines: list[str] = []
+    events: list[dict] = []
     session_id: str | None = None
     result_text = ""
     cost = 0.0
+    input_tokens = 0
+    output_tokens = 0
+    total_tokens = 0
+    model = getattr(agent_cfg, "model", "") or None
     is_error = False
 
     # Import db_logger lazily so pure-CLI mode (no DB) still works.
@@ -103,8 +113,15 @@ def _run_claude(agent_cfg, prompt: str, resume_session: str | None = None, cwd: 
             continue
 
         etype = event.get("type", "")
+        events.append(event)
         if not session_id:
             session_id = event.get("session_id")
+        model = _extract_model(event) or model
+
+        usage = _extract_token_usage(event)
+        input_tokens = max(input_tokens, usage["input_tokens"])
+        output_tokens = max(output_tokens, usage["output_tokens"])
+        total_tokens = max(total_tokens, usage["total_tokens"])
 
         if etype == "result":
             is_error = bool(event.get("is_error", False))
@@ -129,8 +146,16 @@ def _run_claude(agent_cfg, prompt: str, resume_session: str | None = None, cwd: 
                 result_text = fallback.get("result", "")
                 cost = float(fallback.get("total_cost_usd", 0.0) or 0.0)
                 session_id = session_id or fallback.get("session_id")
+                model = _extract_model(fallback) or model
+                usage = _extract_token_usage(fallback)
+                input_tokens = max(input_tokens, usage["input_tokens"])
+                output_tokens = max(output_tokens, usage["output_tokens"])
+                total_tokens = max(total_tokens, usage["total_tokens"])
         except json.JSONDecodeError:
             pass
+
+    if not total_tokens and (input_tokens or output_tokens):
+        total_tokens = input_tokens + output_tokens
 
     if proc.returncode != 0 and not result_text:
         is_error = True
@@ -141,7 +166,11 @@ def _run_claude(agent_cfg, prompt: str, resume_session: str | None = None, cwd: 
         text=result_text,
         session_id=session_id,
         cost=cost,
-        raw={"lines_count": len(lines), "returncode": proc.returncode},
+        raw={"lines_count": len(lines), "returncode": proc.returncode, "events_count": len(events)},
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=total_tokens,
+        model=model,
     )
 
 
@@ -190,13 +219,25 @@ def _run_codex(agent_cfg, prompt: str, resume_session: str | None = None, cwd: s
         events = _parse_jsonl(stdout)
         session_id = _extract_session_id(events)
         cost = _extract_cost(events)
+        usage = _extract_token_usage(events)
+        model = _extract_model(events) or getattr(agent_cfg, "model", "") or None
 
         ok = proc.returncode == 0
         text = last_message.strip() or _extract_final_text(events).strip() or stdout.strip()
         if not ok:
             text = (text + "\n" + stderr).strip()
 
-        return AgentResult(ok, text, session_id, cost, {"events": events, "stderr": stderr})
+        return AgentResult(
+            ok,
+            text,
+            session_id,
+            cost,
+            {"events": events, "stderr": stderr},
+            input_tokens=usage["input_tokens"],
+            output_tokens=usage["output_tokens"],
+            total_tokens=usage["total_tokens"],
+            model=model,
+        )
     finally:
         try:
             os.unlink(last_message_path)
@@ -251,6 +292,51 @@ def _extract_cost(events: list) -> float:
         return float(found or 0.0)
     except ValueError:
         return 0.0
+
+
+def _as_int(value) -> int:
+    try:
+        return max(0, int(float(str(value))))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _max_key(obj, keys: set[str]) -> int:
+    found = 0
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if key in keys and isinstance(value, (str, int, float)):
+                found = max(found, _as_int(value))
+            else:
+                found = max(found, _max_key(value, keys))
+    elif isinstance(obj, list):
+        for item in obj:
+            found = max(found, _max_key(item, keys))
+    return found
+
+
+def _extract_token_usage(obj) -> dict[str, int]:
+    input_tokens = _max_key(obj, {
+        "input_tokens", "inputTokens", "prompt_tokens", "promptTokens",
+    })
+    output_tokens = _max_key(obj, {
+        "output_tokens", "outputTokens", "completion_tokens", "completionTokens",
+    })
+    total_tokens = _max_key(obj, {
+        "total_tokens", "totalTokens", "tokens_used", "tokensUsed",
+        "token_count", "tokenCount",
+    })
+    if not total_tokens and (input_tokens or output_tokens):
+        total_tokens = input_tokens + output_tokens
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+    }
+
+
+def _extract_model(obj) -> str | None:
+    return _find_key(obj, {"model", "model_name", "modelName", "model_id", "modelId"})
 
 
 def _extract_final_text(events: list) -> str:

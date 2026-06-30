@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS harness_runs (
     run_id          TEXT        PRIMARY KEY,
     feature         TEXT        NOT NULL,
     provider        TEXT        NOT NULL DEFAULT 'codex',
-    tech_stack      TEXT        NOT NULL DEFAULT '',
+    model           TEXT        NOT NULL DEFAULT '',
     target          TEXT        NOT NULL DEFAULT '',
     mode            TEXT        NOT NULL DEFAULT 'expanded',
     config          TEXT        NOT NULL DEFAULT '',
@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS harness_runs (
     started_at      DOUBLE PRECISION,
     finished_at     DOUBLE PRECISION,
     cost_usd        DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    input_tokens    BIGINT      NOT NULL DEFAULT 0,
+    output_tokens   BIGINT      NOT NULL DEFAULT 0,
+    total_tokens    BIGINT      NOT NULL DEFAULT 0,
     current_phase   TEXT,
     feature_dir     TEXT,
     log_path        TEXT        NOT NULL DEFAULT '',
@@ -48,6 +51,11 @@ CREATE TABLE IF NOT EXISTS harness_artifacts (
 
 ALTER TABLE harness_runs ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'expanded';
 ALTER TABLE harness_runs ADD COLUMN IF NOT EXISTS config TEXT NOT NULL DEFAULT '';
+ALTER TABLE harness_runs ADD COLUMN IF NOT EXISTS model TEXT NOT NULL DEFAULT '';
+ALTER TABLE harness_runs ADD COLUMN IF NOT EXISTS input_tokens BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE harness_runs ADD COLUMN IF NOT EXISTS output_tokens BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE harness_runs ADD COLUMN IF NOT EXISTS total_tokens BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE harness_runs DROP COLUMN IF EXISTS tech_stack;
 
 CREATE TABLE IF NOT EXISTS phase_events (
     id              BIGSERIAL   PRIMARY KEY,
@@ -60,8 +68,17 @@ CREATE TABLE IF NOT EXISTS phase_events (
     gate_result     TEXT,
     prompt_snippet  TEXT,
     agent_ok        BOOLEAN,
-    cost_usd        DOUBLE PRECISION NOT NULL DEFAULT 0.0
+    cost_usd        DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    model           TEXT        NOT NULL DEFAULT '',
+    input_tokens    BIGINT      NOT NULL DEFAULT 0,
+    output_tokens   BIGINT      NOT NULL DEFAULT 0,
+    total_tokens    BIGINT      NOT NULL DEFAULT 0
 );
+
+ALTER TABLE phase_events ADD COLUMN IF NOT EXISTS model TEXT NOT NULL DEFAULT '';
+ALTER TABLE phase_events ADD COLUMN IF NOT EXISTS input_tokens BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE phase_events ADD COLUMN IF NOT EXISTS output_tokens BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE phase_events ADD COLUMN IF NOT EXISTS total_tokens BIGINT NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS gate_outcomes (
     id              BIGSERIAL   PRIMARY KEY,
@@ -91,6 +108,8 @@ CREATE INDEX IF NOT EXISTS idx_harness_artifacts_type
     ON harness_artifacts(run_id, artifact_type);
 CREATE INDEX IF NOT EXISTS idx_phase_events_run_id
     ON phase_events(run_id);
+CREATE INDEX IF NOT EXISTS idx_phase_events_tokens
+    ON phase_events(run_id, total_tokens DESC);
 CREATE INDEX IF NOT EXISTS idx_gate_outcomes_run_id
     ON gate_outcomes(run_id);
 CREATE INDEX IF NOT EXISTS idx_run_events_run_id
@@ -137,22 +156,32 @@ def save_state(state: dict) -> None:
             cur.execute(
                 """
                 INSERT INTO harness_runs
-                    (run_id, feature, status, created_at, started_at,
-                     cost_usd, current_phase, feature_dir)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    (run_id, feature, provider, model, status, created_at, started_at,
+                     cost_usd, input_tokens, output_tokens, total_tokens,
+                     current_phase, feature_dir)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (run_id) DO UPDATE
                    SET status = EXCLUDED.status,
+                       model = EXCLUDED.model,
                        cost_usd = EXCLUDED.cost_usd,
+                       input_tokens = EXCLUDED.input_tokens,
+                       output_tokens = EXCLUDED.output_tokens,
+                       total_tokens = EXCLUDED.total_tokens,
                        current_phase = EXCLUDED.current_phase,
                        feature_dir = EXCLUDED.feature_dir
                 """,
                 (
                     state["run_id"],
                     state["feature"],
+                    state.get("provider", "codex"),
+                    state.get("model", ""),
                     state.get("status", "running"),
                     now,
                     now,
                     float(state.get("cost_usd", 0.0) or 0.0),
+                    int(state.get("input_tokens", 0) or 0),
+                    int(state.get("output_tokens", 0) or 0),
+                    int(state.get("total_tokens", 0) or 0),
                     state.get("current_phase"),
                     state.get("feature_dir"),
                 ),

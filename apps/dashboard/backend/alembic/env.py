@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from alembic import context
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, pool
 
 config = context.config
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+REPO_ROOT = BACKEND_DIR.parents[2]
+
+load_dotenv(REPO_ROOT / ".env", override=False)
+load_dotenv(BACKEND_DIR / ".env", override=False)
 
 
 def _get_url() -> str:

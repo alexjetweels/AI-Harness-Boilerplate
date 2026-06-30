@@ -161,7 +161,8 @@ claude login
 # Terminal 1 — Backend
 cd apps/dashboard/backend
 ./start.sh
-# hoặc: uvicorn app.main:app --reload --port 8000
+# hoặc:
+DATABASE_URL=postgresql://harness:harness_dev@localhost:5432/harness poetry run uvicorn app.main:app --reload --port 8000
 
 # Terminal 2 — Frontend
 cd apps/dashboard/frontend
@@ -259,7 +260,8 @@ Nếu Docker không chạy → các gate shell sẽ fail → phase bị escalate
 ```bash
 # 1. Khởi động stack
 docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=harness_dev -e POSTGRES_USER=harness -e POSTGRES_DB=harness postgres:16-alpine
-cd apps/dashboard/backend && DATABASE_URL=postgresql://harness:harness_dev@localhost:5432/harness uvicorn app.main:app --port 8000 &
+cd apps/dashboard/backend && DATABASE_URL=postgresql://harness:harness_dev@localhost:5432/harness poetry run alembic upgrade head
+cd apps/dashboard/backend && DATABASE_URL=postgresql://harness:harness_dev@localhost:5432/harness poetry run uvicorn app.main:app --port 8000 &
 cd apps/dashboard/frontend && npm run dev &
 
 # 2. Tạo run test (boss mode ngắn hơn để test nhanh)

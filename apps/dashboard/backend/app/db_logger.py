@@ -21,16 +21,17 @@ def log_run_created(record: dict) -> None:
                 cur.execute(
                     """
                    INSERT INTO harness_runs
-                        (run_id, feature, provider, tech_stack, target,
-                         mode, config, target_repo, status, created_at, log_path)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        (run_id, feature, provider, model, target,
+                         mode, config, target_repo, status, created_at, log_path,
+                         input_tokens, output_tokens, total_tokens)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (run_id) DO NOTHING
                     """,
                     (
                         record["id"],
                         record["feature"],
                         record.get("provider", "codex"),
-                        record.get("tech_stack", ""),
+                        record.get("model", ""),
                         record.get("target", "okr-ghcp"),
                         record.get("mode", "expanded"),
                         record.get("config", ""),
@@ -38,6 +39,9 @@ def log_run_created(record: dict) -> None:
                         record.get("status", "queued"),
                         record["created_at"],
                         record.get("log_path", ""),
+                        int(record.get("input_tokens", 0) or 0),
+                        int(record.get("output_tokens", 0) or 0),
+                        int(record.get("total_tokens", 0) or 0),
                     ),
                 )
         _emit_event(record["id"], "run_created", None,
@@ -51,7 +55,8 @@ def log_run_updated(run_id: str, **fields) -> None:
     if not fields:
         return
     allowed = {
-        "status", "started_at", "finished_at", "cost_usd",
+        "status", "started_at", "finished_at", "cost_usd", "model",
+        "input_tokens", "output_tokens", "total_tokens",
         "current_phase", "feature_dir", "pid", "return_code", "command",
     }
     safe = {k: v for k, v in fields.items() if k in allowed}
@@ -94,7 +99,9 @@ def log_phase_started(run_id: str, phase_name: str, attempt: int,
 
 def log_phase_done(run_id: str, phase_name: str, attempt: int,
                    status: str, gate_result: str,
-                   agent_ok: bool | None = None, cost_usd: float = 0.0) -> None:
+                   agent_ok: bool | None = None, cost_usd: float = 0.0,
+                   model: str = "", input_tokens: int = 0,
+                   output_tokens: int = 0, total_tokens: int = 0) -> None:
     try:
         with db.get_conn() as conn:
             with conn.cursor() as cur:
@@ -105,15 +112,27 @@ def log_phase_done(run_id: str, phase_name: str, attempt: int,
                            gate_result = %s,
                            agent_ok = %s,
                            cost_usd = %s,
+                           model = %s,
+                           input_tokens = %s,
+                           output_tokens = %s,
+                           total_tokens = %s,
                            finished_at = %s
                      WHERE run_id = %s AND phase_name = %s AND attempt = %s
                     """,
                     (status, gate_result, agent_ok, cost_usd,
+                     model, input_tokens, output_tokens, total_tokens,
                      time.time(), run_id, phase_name, attempt),
                 )
         _emit_event(run_id, "phase_done", phase_name,
                     f"Phase '{phase_name}' attempt {attempt} → {status} (gate: {gate_result})",
-                    {"cost_usd": cost_usd, "agent_ok": agent_ok})
+                    {
+                        "cost_usd": cost_usd,
+                        "agent_ok": agent_ok,
+                        "model": model,
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "total_tokens": total_tokens,
+                    })
     except Exception as exc:
         print(f"[db_logger] log_phase_done failed: {exc}")
 
@@ -196,6 +215,26 @@ def fetch_run(run_id: str) -> dict | None:
                 return dict(row) if row else None
     except Exception as exc:
         print(f"[db_logger] fetch_run failed: {exc}")
+        return None
+
+
+def fetch_artifact_content(artifact_id: str) -> dict | None:
+    """Return a single artifact row including its full content."""
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT id, run_id, artifact_type, name, content, payload, created_at
+                      FROM harness_artifacts
+                     WHERE id = %s
+                    """,
+                    (artifact_id,),
+                )
+                row = cur.fetchone()
+                return dict(row) if row else None
+    except Exception as exc:
+        print(f"[db_logger] fetch_artifact_content failed: {exc}")
         return None
 
 
@@ -316,7 +355,9 @@ def fetch_phase_timeline(run_id: str) -> list[dict]:
                 cur.execute(
                     """
                     SELECT phase_name, attempt, status, gate_result,
-                           agent_ok, cost_usd, started_at, finished_at
+                           agent_ok, cost_usd, model,
+                           input_tokens, output_tokens, total_tokens,
+                           started_at, finished_at
                       FROM phase_events
                      WHERE run_id = %s
                      ORDER BY started_at ASC
@@ -326,6 +367,32 @@ def fetch_phase_timeline(run_id: str) -> list[dict]:
                 return [dict(row) for row in cur.fetchall()]
     except Exception as exc:
         print(f"[db_logger] fetch_phase_timeline failed: {exc}")
+        return []
+
+
+def fetch_phase_token_usage(run_id: str) -> list[dict]:
+    try:
+        with db.get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT phase_name,
+                           COALESCE(NULLIF(model, ''), '') AS model,
+                           SUM(input_tokens) AS input_tokens,
+                           SUM(output_tokens) AS output_tokens,
+                           SUM(total_tokens) AS total_tokens,
+                           SUM(cost_usd) AS cost_usd,
+                           COUNT(*) AS attempts
+                      FROM phase_events
+                     WHERE run_id = %s
+                     GROUP BY phase_name, COALESCE(NULLIF(model, ''), '')
+                     ORDER BY SUM(total_tokens) DESC, SUM(cost_usd) DESC, phase_name ASC
+                    """,
+                    (run_id,),
+                )
+                return [dict(row) for row in cur.fetchall()]
+    except Exception as exc:
+        print(f"[db_logger] fetch_phase_token_usage failed: {exc}")
         return []
 
 

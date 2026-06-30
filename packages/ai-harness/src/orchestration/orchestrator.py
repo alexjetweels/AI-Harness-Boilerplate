@@ -79,6 +79,12 @@ def run(cfg, feature: str, run_id: str, repo: str = ".",
         ctx.update(context_builder.build(repo, run_id, feature, getattr(cfg, "context", {})))
         state = state_store.new_run(state_dir, run_id, feature, ctx)
 
+    state["provider"] = getattr(cfg.agent, "provider", "")
+    state["model"] = getattr(cfg.agent, "model", "") or state.get("model", "")
+    state.setdefault("input_tokens", 0)
+    state.setdefault("output_tokens", 0)
+    state.setdefault("total_tokens", 0)
+
     for phase in cfg.phases:
         if state["phases"].get(phase.name, {}).get("status") == "done":
             continue
@@ -113,6 +119,10 @@ def run(cfg, feature: str, run_id: str, repo: str = ".",
 
                 session = res.session_id or session
                 state["cost_usd"] = round(state["cost_usd"] + res.cost, 4)
+                state["model"] = res.model or state.get("model", "")
+                state["input_tokens"] = int(state.get("input_tokens", 0) or 0) + res.input_tokens
+                state["output_tokens"] = int(state.get("output_tokens", 0) or 0) + res.output_tokens
+                state["total_tokens"] = int(state.get("total_tokens", 0) or 0) + res.total_tokens
                 agent_text = res.text
                 _write_artifact(
                     run_id,
@@ -128,7 +138,11 @@ def run(cfg, feature: str, run_id: str, repo: str = ".",
                     state_store.save(state_dir, state)
                     db_logger.phase_done(run_id, phase.name, attempt,
                                         "failed", "agent_error",
-                                        agent_ok=False, cost_usd=res.cost)
+                                        agent_ok=False, cost_usd=res.cost,
+                                        model=res.model or state.get("model", ""),
+                                        input_tokens=res.input_tokens,
+                                        output_tokens=res.output_tokens,
+                                        total_tokens=res.total_tokens)
                     continue
 
             # The /speckit.specify run creates specs/<branch>/ — discover it now.
@@ -170,7 +184,11 @@ def run(cfg, feature: str, run_id: str, repo: str = ".",
                                  "done" if not failed else "failed",
                                  gate_result,
                                  agent_ok=_agent_ok,
-                                 cost_usd=res.cost if phase.command else 0.0)  # type: ignore[name-defined]
+                                 cost_usd=res.cost if phase.command else 0.0,  # type: ignore[name-defined]
+                                 model=(res.model or state.get("model", "")) if phase.command else state.get("model", ""),  # type: ignore[name-defined]
+                                 input_tokens=res.input_tokens if phase.command else 0,  # type: ignore[name-defined]
+                                 output_tokens=res.output_tokens if phase.command else 0,  # type: ignore[name-defined]
+                                 total_tokens=res.total_tokens if phase.command else 0)  # type: ignore[name-defined]
 
             if not failed:
                 passed = True

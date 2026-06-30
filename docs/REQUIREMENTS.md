@@ -435,15 +435,17 @@ phases:
 
 | Table | Vai trò |
 |---|---|
-| `harness_runs` | Run metadata: feature, provider, target, mode, status, cost_usd, pid |
+| `harness_runs` | Run metadata: feature, provider, model, target, mode, status, cost_usd, tokens, pid |
 | `harness_run_state` | State JSON resumable của run hiện tại |
 | `harness_artifacts` | Context packets, manifests, phase logs, gate logs, escalations |
-| `phase_events` | Timeline start/done của từng phase attempt |
+| `phase_events` | Timeline start/done, model, cost, token usage của từng phase attempt |
 | `gate_outcomes` | Pass/fail record của từng gate |
 | `run_events` | General event stream cho dashboard và audit |
 
 **Metrics có sẵn:**
 - `cost_usd` per run (tổng hợp từ provider response)
+- `model`, `input_tokens`, `output_tokens`, `total_tokens` per run
+- `model`, `input_tokens`, `output_tokens`, `total_tokens` per phase attempt
 - `attempts` per phase
 - `gate_result` per phase attempt
 - Phase timeline (started_at, finished_at)

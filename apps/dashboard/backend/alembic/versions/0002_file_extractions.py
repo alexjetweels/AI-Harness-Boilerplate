@@ -19,13 +19,25 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("""
-        CREATE TYPE IF NOT EXISTS file_type_enum AS ENUM ('excel', 'txt', 'pdf')
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'file_type_enum') THEN
+                CREATE TYPE file_type_enum AS ENUM ('excel', 'txt', 'pdf');
+            END IF;
+        END
+        $$;
     """)
 
     op.execute("""
-        CREATE TYPE IF NOT EXISTS extraction_status_enum AS ENUM (
-            'pending', 'processing', 'complete', 'failed'
-        )
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'extraction_status_enum') THEN
+                CREATE TYPE extraction_status_enum AS ENUM (
+                    'pending', 'processing', 'complete', 'failed'
+                );
+            END IF;
+        END
+        $$;
     """)
 
     op.execute("""

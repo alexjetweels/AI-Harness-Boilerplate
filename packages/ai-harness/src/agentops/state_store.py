@@ -14,6 +14,9 @@ def new_run(state_dir: str, run_id: str, feature: str, ctx: dict) -> dict:
         "feature_dir": None,        # specs/NNN-* discovered after /speckit.specify
         "phases": {},               # name -> {status, gate, attempts, failed_gates}
         "cost_usd": 0.0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
     save(state_dir, state)

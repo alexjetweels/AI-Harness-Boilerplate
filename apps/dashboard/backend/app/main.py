@@ -150,7 +150,11 @@ def _restore_harness_runs_from_db() -> None:
                 "id": run_id,
                 "feature": row["feature"],
                 "provider": row.get("provider", "codex"),
-                "tech_stack": row.get("tech_stack", ""),
+                "model": row.get("model", ""),
+                "input_tokens": row.get("input_tokens", 0),
+                "output_tokens": row.get("output_tokens", 0),
+                "total_tokens": row.get("total_tokens", 0),
+                "tech_stack": "",
                 "target": row.get("target", "okr-ghcp"),
                 "target_repo": row.get("target_repo", ""),
                 "status": row.get("status", "unknown"),
@@ -232,6 +236,18 @@ def _tail(path: Path, limit: int = 120) -> list[str]:
     return lines[-limit:]
 
 
+def _config_agent_model(target_repo: Path, config_name: str) -> str:
+    config_path = Path(config_name)
+    if not config_path.is_absolute():
+        config_path = target_repo / config_name
+    try:
+        import yaml
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return ""
+    return str((raw.get("agent") or {}).get("model") or "")
+
+
 def _artifact_summary(target_repo: Path) -> list[dict]:
     artifact_dirs = [
         target_repo / "docs" / "output",
@@ -260,7 +276,9 @@ def _artifact_summary(target_repo: Path) -> list[dict]:
 
 
 def _phase_names(record: dict, state: dict) -> list[str]:
-    names = list(state.get("phases", {}).keys())
+    # YAML config is authoritative for ordering — JSONB key order is not reliable
+    # (PostgreSQL sorts JSONB keys by length then alpha, not insertion order).
+    yaml_names: list[str] = []
     target_repo = Path(record["target_repo"])
     config_name = record.get("config") or TARGET_CONFIGS.get((record.get("target"), record.get("mode", "expanded")), "")
     config_path = Path(config_name)
@@ -269,10 +287,15 @@ def _phase_names(record: dict, state: dict) -> list[str]:
     try:
         import yaml
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-        names.extend([phase["name"] for phase in raw.get("phases", []) if "name" in phase])
+        yaml_names = [phase["name"] for phase in raw.get("phases", []) if "name" in phase]
     except Exception:
         pass
-    return list(dict.fromkeys(names))
+    # Start with YAML order, then append any state phases not in YAML (e.g. dynamic phases).
+    names = list(yaml_names)
+    for name in state.get("phases", {}).keys():
+        if name not in set(names):
+            names.append(name)
+    return names
 
 
 def _serialize_harness_run(run_id: str) -> dict:
@@ -280,6 +303,7 @@ def _serialize_harness_run(run_id: str) -> dict:
     if not record:
         raise HTTPException(status_code=404, detail="Harness run not found")
 
+    db_record = db_logger.fetch_run(run_id) or {}
     target_repo = Path(record["target_repo"])
     state = db_logger.fetch_run_state(run_id) or {}
     phases_raw = state.get("phases", {})
@@ -304,7 +328,11 @@ def _serialize_harness_run(run_id: str) -> dict:
         **record,
         "status": status,
         "current_phase": state.get("current_phase"),
-        "cost_usd": state.get("cost_usd", 0.0),
+        "model": db_record.get("model", record.get("model", state.get("model", ""))),
+        "cost_usd": state.get("cost_usd", db_record.get("cost_usd", 0.0)),
+        "input_tokens": state.get("input_tokens", db_record.get("input_tokens", record.get("input_tokens", 0))),
+        "output_tokens": state.get("output_tokens", db_record.get("output_tokens", record.get("output_tokens", 0))),
+        "total_tokens": state.get("total_tokens", db_record.get("total_tokens", record.get("total_tokens", 0))),
         "phases": phases,
         "artifacts": db_logger.fetch_artifacts(run_id),
         "log_tail": db_logger.fetch_artifact_log_tail(run_id),
@@ -514,6 +542,7 @@ async def create_harness_run(payload: CreateHarnessRunRequest) -> dict:
         "id": run_id,
         "feature": payload.feature,
         "provider": payload.provider,
+        "model": _config_agent_model(target_repo, config),
         "tech_stack": payload.tech_stack,
         "target": payload.target,
         "mode": payload.mode,
@@ -527,6 +556,9 @@ async def create_harness_run(payload: CreateHarnessRunRequest) -> dict:
         "return_code": None,
         "command": None,
         "log_path": str(log_path),
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
     }
     HARNESS_RUNS[run_id] = record
     db_logger.log_run_created(record)
@@ -594,6 +626,33 @@ def get_run_phases(run_id: str) -> dict:
         else:
             row["duration_sec"] = None
     return {"run_id": run_id, "phases": rows}
+
+
+@app.get("/api/harness-runs/{run_id}/token-usage")
+def get_run_token_usage(run_id: str) -> dict:
+    """Return model/token usage grouped by phase, highest token usage first."""
+    if run_id not in HARNESS_RUNS:
+        raise HTTPException(status_code=404, detail="Harness run not found")
+    rows = db_logger.fetch_phase_token_usage(run_id)
+    return {"run_id": run_id, "phases": rows}
+
+
+@app.get("/api/harness-runs/{run_id}/artifacts/{artifact_id}")
+def get_artifact_content(run_id: str, artifact_id: str) -> dict:
+    """Return a single artifact's full content."""
+    if run_id not in HARNESS_RUNS:
+        raise HTTPException(status_code=404, detail="Harness run not found")
+    row = db_logger.fetch_artifact_content(artifact_id)
+    if not row or str(row.get("run_id")) != run_id:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return {
+        "id": row["id"],
+        "artifact_type": row["artifact_type"],
+        "name": row["name"],
+        "content": row["content"] or "",
+        "payload": row["payload"],
+        "created_at": row["created_at"],
+    }
 
 
 @app.get("/api/harness-runs/{run_id}/log")

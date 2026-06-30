@@ -260,10 +260,10 @@ Primary tables:
 
 | Table | Role |
 | --- | --- |
-| `harness_runs` | Run metadata: feature, provider, target, mode, status, cost |
+| `harness_runs` | Run metadata: feature, provider, model, target, mode, status, cost, tokens |
 | `harness_run_state` | Current resumable state JSON |
 | `harness_artifacts` | Context packets, manifests, phase logs, gate logs, escalations |
-| `phase_events` | Phase start/done timeline |
+| `phase_events` | Phase start/done timeline with per-attempt model, cost, and token usage |
 | `gate_outcomes` | Gate pass/fail records |
 | `run_events` | General event stream for dashboard and audit |
 
