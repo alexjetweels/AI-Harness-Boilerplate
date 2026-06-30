@@ -1282,13 +1282,38 @@ textarea:focus-visible, select:focus-visible, input[type='text']:focus-visible {
 .dp-artifacts { display: grid; gap: 5px; }
 
 .dp-artifact {
-  display: flex;
-  gap: 7px;
-  padding: 7px 9px;
   border: 1px solid #2a2720;
   background: var(--c-surface);
   color: var(--c-on-surface-muted);
+  overflow: hidden;
 }
+
+/* static (non-interactive) artifact row kept for backwards compat */
+.dp-artifact:not(.dp-artifact--btn) {
+  display: flex;
+  gap: 7px;
+  padding: 7px 9px;
+}
+
+.dp-artifact--btn { cursor: default; }
+.dp-artifact--open { border-color: var(--c-primary-dim); }
+
+.dp-artifact-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 9px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--c-on-surface-muted);
+  text-align: left;
+}
+.dp-artifact-toggle:hover { background: var(--c-surface-1); }
+.dp-artifact--open .dp-artifact-toggle { background: var(--c-primary-container); }
+
+.dp-artifact-meta { display: grid; gap: 2px; min-width: 0; flex: 1; }
 
 .dp-artifact div { display: grid; gap: 2px; min-width: 0; }
 
@@ -1308,6 +1333,28 @@ textarea:focus-visible, select:focus-visible, input[type='text']:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dp-artifact-chevron {
+  flex-shrink: 0;
+  margin-top: 2px;
+  transition: transform var(--dur-mid) var(--ease-std);
+}
+.dp-artifact-chevron--open { transform: rotate(180deg); }
+
+.dp-artifact-content {
+  margin: 0;
+  padding: 10px 12px;
+  border-top: 1px solid var(--c-primary-dim);
+  background: #0a100d;
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: #c8e6c0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 480px;
+  overflow-y: auto;
 }
 
 .dp-empty {

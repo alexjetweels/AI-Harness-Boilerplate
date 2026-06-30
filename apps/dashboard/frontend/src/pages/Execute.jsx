@@ -145,7 +145,6 @@ async function uploadFiles(files, runId) {
 function LaunchForm({ onRunStarted }) {
   const [feature,  setFeature]  = useState(DEFAULT_TASK);
   const [provider, setProvider] = useState('claude');
-  const [mode,     setMode]     = useState('expanded');
   const [files,    setFiles]    = useState([]);
   const [starting, setStarting] = useState(false);
   const [error,    setError]    = useState('');
@@ -158,7 +157,7 @@ function LaunchForm({ onRunStarted }) {
       const res = await fetch(`${API_BASE}/api/harness-runs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ feature, provider, mode }),
+        body: JSON.stringify({ feature, provider, mode: 'expanded' }),
       });
       if (!res.ok) throw new Error(`API ${res.status}`);
       const payload = await res.json();
@@ -193,13 +192,6 @@ function LaunchForm({ onRunStarted }) {
             <select value={provider} onChange={(e) => setProvider(e.target.value)}>
               <option value="codex">Codex</option>
               <option value="claude">Claude Code</option>
-            </select>
-          </label>
-          <label>
-            <span>Mode</span>
-            <select value={mode} onChange={(e) => setMode(e.target.value)}>
-              <option value="expanded">Expanded</option>
-              <option value="boss">Boss</option>
             </select>
           </label>
           <button className="primaryButton" type="submit" disabled={starting || !feature.trim()}>

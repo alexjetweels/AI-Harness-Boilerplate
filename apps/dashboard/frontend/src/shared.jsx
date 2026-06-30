@@ -20,6 +20,7 @@ import {
   Activity,
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
   Circle,
   Code2,
   Database,
@@ -450,6 +451,54 @@ export function PipelineFlow({ run, timelineMap, selectedPhase, onPhaseSelect })
   );
 }
 
+/* ── ArtifactItem ────────────────────────────────────────────────────────── */
+
+function ArtifactItem({ artifact, runId }) {
+  const [expanded, setExpanded] = useState(false);
+  const [content, setContent] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  async function toggle() {
+    if (expanded) { setExpanded(false); return; }
+    if (content === null) {
+      setLoading(true);
+      try {
+        const artifactId = artifact.path.replace('db://harness_artifacts/', '');
+        const res = await fetch(`${API_BASE}/api/harness-runs/${runId}/artifacts/${artifactId}`);
+        if (res.ok) setContent((await res.json()).content || '(empty)');
+        else setContent('Failed to load content.');
+      } catch {
+        setContent('Error fetching content.');
+      } finally {
+        setLoading(false);
+      }
+    }
+    setExpanded(true);
+  }
+
+  const sizeLabel = artifact.size > 0
+    ? artifact.size >= 1024 ? `${(artifact.size / 1024).toFixed(1)} KB` : `${artifact.size} B`
+    : null;
+
+  return (
+    <div className={`dp-artifact dp-artifact--btn${expanded ? ' dp-artifact--open' : ''}`}>
+      <button className="dp-artifact-toggle" onClick={toggle} aria-expanded={expanded}>
+        <FileText size={12} style={{ flexShrink: 0, marginTop: 1 }} />
+        <div className="dp-artifact-meta">
+          <span>{artifact.name}</span>
+          <small>{artifact.artifact_type}{sizeLabel ? ` · ${sizeLabel}` : ''}</small>
+        </div>
+        {loading
+          ? <Activity size={11} className="spin" style={{ flexShrink: 0 }} />
+          : <ChevronDown size={11} className={`dp-artifact-chevron${expanded ? ' dp-artifact-chevron--open' : ''}`} />}
+      </button>
+      {expanded && (
+        <pre className="dp-artifact-content">{content ?? 'Loading…'}</pre>
+      )}
+    </div>
+  );
+}
+
 /* ── PhaseDetailPanel ────────────────────────────────────────────────────── */
 
 export function PhaseDetailPanel({ run, selectedPhase, gatesByPhase, events, phaseTimeline, onClose }) {
@@ -466,7 +515,14 @@ export function PhaseDetailPanel({ run, selectedPhase, gatesByPhase, events, pha
   const gateOutcomes  = latestAttempt != null ? (phaseGates[String(latestAttempt)] || phaseGates[latestAttempt] || []) : [];
 
   const phaseEvents  = events.filter((e) => e.phase === selectedPhase);
-  const artifacts    = (run?.artifacts || []).filter((a) => a.name?.includes(selectedPhase));
+  const artifacts    = (run?.artifacts || []).filter((a) => {
+    if (selectedPhase === 'H1-context') {
+      return a.artifact_type === 'context_packet'
+          || a.artifact_type === 'context_manifest'
+          || a.name?.includes(selectedPhase);
+    }
+    return a.name?.includes(selectedPhase);
+  });
   const runStatus    = phaseRunStatus(phaseData, selectedPhase, run?.current_phase, run?.status);
 
   return (
@@ -561,13 +617,10 @@ export function PhaseDetailPanel({ run, selectedPhase, gatesByPhase, events, pha
 
       {artifacts.length > 0 && (
         <div className="dp-section">
-          <h4 className="dp-section-title"><FileText size={12} />Artifacts</h4>
+          <h4 className="dp-section-title"><FileText size={12} />Artifacts <small style={{ fontWeight: 400, color: 'var(--c-on-surface-muted)' }}>— click to expand</small></h4>
           <div className="dp-artifacts">
             {artifacts.map((a) => (
-              <div key={a.path} className="dp-artifact">
-                <FileText size={12} style={{ flexShrink: 0, marginTop: 1 }} />
-                <div><span>{a.name}</span><small>{a.path}</small></div>
-              </div>
+              <ArtifactItem key={a.path} artifact={a} runId={run?.id} />
             ))}
           </div>
         </div>
@@ -666,13 +719,10 @@ export function RunOutputPanel({ run, events }) {
 
       {run?.artifacts?.length > 0 && (
         <div className="dp-section">
-          <h4 className="dp-section-title"><FileText size={12} />Artifacts</h4>
+          <h4 className="dp-section-title"><FileText size={12} />Artifacts <small style={{ fontWeight: 400, color: 'var(--c-on-surface-muted)' }}>— click to expand</small></h4>
           <div className="dp-artifacts">
             {run.artifacts.map((a) => (
-              <div key={a.path} className="dp-artifact">
-                <FileText size={12} style={{ flexShrink: 0, marginTop: 1 }} />
-                <div><span>{a.name}</span><small>{a.path}</small></div>
-              </div>
+              <ArtifactItem key={a.path} artifact={a} runId={run?.id} />
             ))}
           </div>
         </div>
