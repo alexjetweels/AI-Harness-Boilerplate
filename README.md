@@ -8,13 +8,13 @@ The active target in this checkout is `AINative_OKR_Claude_GHCP/`. Generic SDLC
 configs are kept under `templates/` as starter material, not as dashboard
 runtime config.
 
-## Folder Structure
+## Current Repository Shape
 
 ```text
 apps/
   dashboard/
     backend/              FastAPI API for starting and observing harness runs
-    frontend/             React dashboard for non-terminal users
+    frontend/             React/Vite dashboard for run history and pipeline views
 
 packages/
   ai-harness/             Python harness engine, CLI, and package-owned adapters
@@ -113,8 +113,10 @@ before relying on gates. These files are intentionally outside
 
 ## Dashboard API
 
-Real harness runner endpoints:
+Harness-run endpoints:
 
+- `GET /api/harness-targets`
+- `GET /api/harness-runs`
 - `POST /api/harness-runs`
 - `GET /api/harness-runs/latest`
 - `GET /api/harness-runs/{run_id}`
