@@ -35,8 +35,10 @@ apps/
 
 packages/
   ai-harness/             Python harness engine and CLI
-    harness.yaml          Existing Spec-Kit-style config
-    harness.sdlc.yaml     Existing generic SDLC config
+    targets/okr-ghcp/     Active OKR expanded and boss-mode adapters
+
+templates/
+  generic-sdlc/           Copyable generic YAML adapter templates
 
 AINative_OKR_Claude_GHCP/
   .claude/
@@ -60,7 +62,9 @@ docs/
   template-overview.md    This practical overview
 ```
 
-The previous todo demo and reusable Claude SDLC template directories are currently deleted from the working tree, so the docs should no longer present them as active runnable assets.
+The previous todo demo and reusable Claude SDLC template directories are not
+present in this checkout, so the dashboard and docs should not present them as
+active runnable assets.
 
 ## What The OKR Source Contains
 
@@ -77,7 +81,7 @@ The previous todo demo and reusable Claude SDLC template directories are current
 | Technical app architecture | Present |
 | Actual backend/frontend code | Not present yet |
 | Docker Compose app stack | Not present yet |
-| Target-specific harness config | Not present yet |
+| Target-specific harness config | Present |
 
 ## OKR Agent Flow
 
@@ -106,13 +110,18 @@ target-project/
   docs/input/*              present
 ```
 
-The missing harness/runtime pieces are:
+The active harness/runtime adapter pieces are:
 
 ```text
 packages/ai-harness/targets/okr-ghcp/
-  harness.okr.yaml          present
-  harness.okr.boss.yaml     present
-  commands/*                present
+  harness.okr.yaml          expanded-mode dashboard adapter
+  harness.okr.boss.yaml     boss-mode dashboard adapter
+  commands/*                fallback command wrappers
+```
+
+The missing generated-app pieces are:
+
+```text
 
 target-project/
   backend/                  missing
@@ -131,11 +140,11 @@ The Python harness can currently:
 - Load YAML phase configs.
 - Run Claude Code or Codex CLI.
 - Inline `.claude/commands/*.md` for Codex.
-- Persist state under `.specify/state`.
-- Persist run logs under `.specify/runs`.
+- Persist run state, events, gates, and artifacts to Postgres.
 - Retry failed agent phases.
 - Escalate after max attempts.
-- Run deterministic gates: shell, glob, marker checks, and agent-output marker checks.
+- Run deterministic gates: shell, glob, marker checks, DB artifact checks,
+  secret scans, and agent-output marker checks.
 
 The implementation is strongest in orchestration and deterministic gates. Context packets, tool audit, security scans, governance approvals, and detailed AgentOps metrics still need deeper implementation.
 
@@ -154,7 +163,9 @@ Start with one of these modes:
 | Boss mode | Runs `/okr.bossbuiltin` as one main phase, then gates final outputs | First integration pass |
 | Expanded mode | Maps each OKR step to a separate harness phase | Better dashboard visibility and repair control |
 
-Recommended first pass: Boss mode. It keeps the imported flow intact while proving that the folder works as a harness target.
+Dashboard runs currently default to Expanded mode because it exposes each OKR
+step as a separate phase for retries, gates, and UI inspection. Boss mode is
+kept as a compatibility adapter for one-shot `/okr.bossbuiltin` runs.
 
 ## Gap List
 
@@ -164,9 +175,8 @@ Recommended first pass: Boss mode. It keeps the imported flow intact while provi
 | No generated app code yet | Build/test gates have nothing to run | Scaffold the app in `backend/` and `frontend/` |
 | No project scripts | Shell gates cannot verify implementation | Add npm scripts for build, typecheck, lint, test |
 | No Docker stack | Target architecture requires local Docker runtime | Add `docker-compose.yml` and Dockerfiles |
-| No deterministic OKR artifact gates | Harness cannot prove SRS/BD/DD/spec/plan/tasks were produced | Add glob gates for expected outputs |
-| No dashboard target registration | UI may not list the OKR folder | Add target discovery/config for `AINative_OKR_Claude_GHCP/` |
-| Boss flow hidden from harness | One command hides individual step status | Use Expanded mode after first pass |
+| Some app gates cannot pass before app scaffold exists | Harness cannot verify generated source yet | Replace placeholder source assumptions as the generated app stabilizes |
+| Boss flow hidden from harness | One command hides individual step status | Keep dashboard default on Expanded mode |
 | Security/governance still light | DB resets, secrets, auth, and Docker commands need guardrails | Add security and approval policies |
 
 ## Target OKR App Stack
@@ -204,13 +214,11 @@ AINative_OKR_Claude_GHCP/
 
 ## Next Milestone
 
-The next milestone should be target onboarding for `AINative_OKR_Claude_GHCP/`:
+The next milestone should be generated-app onboarding for `AINative_OKR_Claude_GHCP/`:
 
-1. Keep `harness.okr.yaml` in `packages/ai-harness/targets/okr-ghcp/`.
-2. Register the OKR folder as a dashboard target.
-3. Add initial Boss-mode gates for generated docs and final app health.
-4. Scaffold backend/frontend/Docker source inside the OKR folder.
-5. Replace placeholder gates with real build, typecheck, lint, test, security, and acceptance commands.
-6. Split Boss mode into Expanded mode after the first successful end-to-end run.
+1. Keep OKR adapters in `packages/ai-harness/targets/okr-ghcp/`.
+2. Scaffold backend/frontend/Docker source inside the OKR folder.
+3. Replace placeholder gates with real build, typecheck, lint, test, security, and acceptance commands.
+4. Keep generic YAML examples under `templates/generic-sdlc/` until they are copied into a real target.
 
 After these fixes, this repo can move from "harness plus imported source" to "harness-driven OKR app implementation."

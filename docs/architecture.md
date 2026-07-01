@@ -45,9 +45,12 @@ Reusable Python harness engine. Source code lives directly under `src/` and is s
 packages/ai-harness/
   pyproject.toml
   README.md
-  harness.yaml
-  harness.sdlc.yaml
   evals/
+  targets/
+    okr-ghcp/
+      harness.okr.yaml
+      harness.okr.boss.yaml
+      commands/
   src/
     cli.py
     __main__.py
@@ -86,6 +89,8 @@ packages/ai-harness/
 | `src/agentops/state_store.py` | H6 | DB-backed run state facade |
 | `src/agentops/db_logger.py` | H6 | Phase, gate, and event logging into Postgres |
 | `src/orchestration/orchestrator.py` | H7 | Phase loop, retry, resume, cost updates |
+| `targets/okr-ghcp/harness.okr.yaml` | Adapter | Dashboard expanded-mode OKR phase graph |
+| `targets/okr-ghcp/harness.okr.boss.yaml` | Adapter | Dashboard boss-mode OKR phase graph |
 
 CLI execution:
 
@@ -95,6 +100,14 @@ python -m cli run `
   --repo .\AINative_OKR_Claude_GHCP `
   --config .\packages\ai-harness\targets\okr-ghcp\harness.okr.yaml `
   --feature "Build the OKR web application"
+```
+
+Generic starter configs are templates, not package runtime config:
+
+```text
+templates/generic-sdlc/
+  harness.yaml
+  harness.sdlc.yaml
 ```
 
 ## `harness/`
@@ -214,6 +227,7 @@ Dashboard target flow:
 ```text
 Frontend form
   -> POST /api/harness-runs
+  -> backend selects packages/ai-harness/targets/okr-ghcp/harness.okr.yaml
   -> backend spawns `python -m cli run`
   -> harness writes state/artifacts/events to Postgres
   -> frontend polls latest run data from API

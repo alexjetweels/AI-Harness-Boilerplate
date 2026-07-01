@@ -1,0 +1,85 @@
+# Generic Spec-Kit harness adapter template.
+# Copy this file into a target repo and adjust `project` commands before use:
+#   harness run --feature "..." --repo /path/to/target --config harness.yaml
+specs_glob: "specs/*"
+state_dir: ".specify/state"
+runs_dir: ".specify/runs"
+
+agent:
+  provider: claude          # claude | codex
+  bin: claude
+  model: sonnet            # 'sonnet' is cheaper; use 'opus' for hard features
+  max_turns: 40
+  max_budget_usd: 0        # 0 = no cap. Set e.g. 3.0 to cap spend PER agent call.
+  allowed_tools: "Read,Write,Edit,Bash"
+  skip_permissions: true   # unattended runs need this — ONLY run inside a sandbox/CI
+  extra_args: []           # e.g. ["--add-dir", "."]
+
+# ── Project-specific commands. EDIT THESE to match YOUR stack. ────────────────
+# They feed the shell gates below. Placeholders just pass so the pipeline runs
+# end-to-end before you wire real commands in.
+project:
+  build:      "echo 'TODO: set project.build'      && exit 0"   # e.g. npm run build
+  typecheck:  "echo 'TODO: set project.typecheck'  && exit 0"   # e.g. npx tsc --noEmit
+  lint:       "echo 'TODO: set project.lint'       && exit 0"   # e.g. npm run lint
+  test:       "echo 'TODO: set project.test'       && exit 0"   # e.g. npm test
+  acceptance: "echo 'TODO: set project.acceptance' && exit 0"   # e.g. npm run test:e2e
+
+# ── Pipeline: each phase = optional slash command + deterministic gates. ──────
+phases:
+  - name: constitution
+    command: "/speckit.constitution {constitution}"
+    skip_if_exists: ".specify/memory/constitution.md"
+    max_attempts: 1
+    gates:
+      - { name: constitution-exists, type: glob_nonempty,
+          params: { glob: ".specify/memory/constitution.md" } }
+
+  - name: specify
+    command: "/speckit.specify {feature}"
+    max_attempts: 2
+    gates:
+      - { name: spec-exists, type: glob_nonempty, params: { glob: "{feature_dir}/spec.md" } }
+
+  - name: clarify
+    command: "/speckit.clarify"
+    max_attempts: 2
+    gates:
+      - { name: no-clarification-markers, type: no_markers,
+          params: { glob: "{feature_dir}/spec.md", markers: ["[NEEDS CLARIFICATION]"] } }
+
+  - name: plan
+    command: "/speckit.plan {tech_stack}"
+    max_attempts: 2
+    gates:
+      - { name: plan-exists, type: glob_nonempty, params: { glob: "{feature_dir}/plan.md" } }
+
+  - name: tasks
+    command: "/speckit.tasks"
+    max_attempts: 2
+    gates:
+      - { name: tasks-exist, type: glob_nonempty, params: { glob: "{feature_dir}/tasks.md" } }
+
+  - name: analyze
+    command: "/speckit.analyze"
+    max_attempts: 2
+    gates:
+      # /speckit.analyze is read-only; if its report contains these words we ask
+      # the agent (same session) to fix the spec/plan/tasks it flagged.
+      - { name: no-critical-inconsistency, type: agent_output,
+          params: { fail_markers: ["CRITICAL", "inconsistency", "MISSING", "conflict"] } }
+
+  - name: implement
+    command: "/speckit.implement"
+    max_attempts: 3
+    gates:
+      - { name: build,     type: shell, params: { cmd: "${project.build}" } }
+      - { name: typecheck, type: shell, params: { cmd: "${project.typecheck}" } }
+      - { name: lint,      type: shell, params: { cmd: "${project.lint}" } }
+      - { name: test,      type: shell, params: { cmd: "${project.test}" } }
+
+  # Gate-only final phase: a clean acceptance pass. No agent → failure escalates.
+  - name: verify
+    max_attempts: 1
+    gates:
+      - { name: acceptance, type: shell, params: { cmd: "${project.acceptance}" } }

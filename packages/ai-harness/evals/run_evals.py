@@ -37,7 +37,7 @@ def run_case(case_dir: str, template: str) -> bool:
 
         rc = subprocess.run(
             ["harness", "run", "--feature", prompt, "--repo", work,
-             "--config", os.path.join(work, "packages/ai-harness", "harness.yaml")],
+             "--config", os.path.join(work, "templates/generic-sdlc", "harness.yaml")],
         ).returncode
         passed = rc == 0
 

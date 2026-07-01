@@ -1,4 +1,4 @@
-"""Load and validate harness.yaml."""
+"""Load and validate harness adapter YAML."""
 from dataclasses import dataclass, field
 import os
 import yaml

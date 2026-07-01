@@ -179,8 +179,6 @@ AI-Harness-Boilerplate/
     ai-harness/
       pyproject.toml
       README.md
-      harness.yaml         # Generic SDLC harness config (template)
-      harness.sdlc.yaml    # Project-level defaults
       targets/
         okr-ghcp/
           harness.okr.yaml          # Expanded mode adapter
@@ -213,6 +211,11 @@ AI-Harness-Boilerplate/
           db_logger.py      # H6: phase/gate/event logger
         orchestration/
           orchestrator.py   # H7: phase loop, retry, resume, feedback inject
+
+  templates/
+    generic-sdlc/
+      harness.yaml          # Spec-Kit-style adapter template
+      harness.sdlc.yaml     # Plain SDLC command-pack adapter template
 
   harness/                  # Blueprint tái sử dụng (không phải code chạy)
     README.md

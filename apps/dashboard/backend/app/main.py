@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
-import random
 import signal
 import sys
 import time
-from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -20,73 +17,11 @@ from . import db
 from . import db_logger
 
 
-HarnessKind = Literal[
-    "context",
-    "tool",
-    "evaluation",
-    "security",
-    "governance",
-    "agentops",
-    "orchestration",
-]
-
-
-@dataclass
-class HarnessComponent:
-    id: str
-    code: str
-    kind: HarnessKind
-    name: str
-    coverage: int
-    status: Literal["strong", "good", "gap", "critical"]
-    summary: str
-    gaps: list[str]
-    color: str
-
-
-@dataclass
-class Stage:
-    id: str
-    label: str
-    state: Literal["done", "current", "pending", "failed", "blocked", "warning"]
-    owner: HarnessKind
-
-
-@dataclass
-class Lane:
-    id: str
-    title: str
-    harness: HarnessKind
-    status: Literal["running", "complete", "needs_you", "idle", "blocked"]
-    progress: int
-    current_stage: str
-    branch: str
-    checks: list[str]
-    cost_usd: float
-    hallucination_risk: Literal["low", "medium", "high"]
-    updated_at: float
-    log: list[str] = field(default_factory=list)
-
-
-@dataclass
-class Run:
-    id: str
-    feature: str
-    status: Literal["running", "complete", "blocked"]
-    created_at: float
-    lanes: list[Lane]
-
-
-class CreateRunRequest(BaseModel):
-    feature: str = Field(..., min_length=3, max_length=240)
-    tech_stack: str = Field(default="React + FastAPI + Docker", max_length=240)
-
-
 class CreateHarnessRunRequest(BaseModel):
     feature: str = Field(..., min_length=3, max_length=500)
     provider: Literal["claude", "codex"] = "codex"
     tech_stack: str = Field(default="React 18 + NestJS 10 + Prisma 5 + MySQL 8 + Docker", max_length=240)
-    target: Literal["okr-ghcp", "todo-app"] = "okr-ghcp"
+    target: Literal["okr-ghcp"] = "okr-ghcp"
     mode: Literal["expanded", "boss"] = "expanded"
 
 
@@ -111,9 +46,6 @@ def _startup() -> None:
         print(f"⚠️  DB unavailable on startup (continuing without persistence): {exc}")
 
 
-RUNS: dict[str, Run] = {}
-
-
 def _find_root_dir() -> Path:
     for parent in Path(__file__).resolve().parents:
         if (parent / "packages" / "ai-harness").exists() and (parent / "AINative_OKR_Claude_GHCP").exists():
@@ -126,14 +58,9 @@ HARNESS_PACKAGE_DIR = ROOT_DIR / "packages" / "ai-harness"
 TARGETS = {
     "okr-ghcp": ROOT_DIR / "AINative_OKR_Claude_GHCP",
 }
-todo_target = ROOT_DIR / "examples" / "todo-app"
-if todo_target.exists():
-    TARGETS["todo-app"] = todo_target
 TARGET_CONFIGS = {
     ("okr-ghcp", "expanded"): str(HARNESS_PACKAGE_DIR / "targets" / "okr-ghcp" / "harness.okr.yaml"),
     ("okr-ghcp", "boss"): str(HARNESS_PACKAGE_DIR / "targets" / "okr-ghcp" / "harness.okr.boss.yaml"),
-    ("todo-app", "expanded"): "harness.codex.yaml",
-    ("todo-app", "boss"): "harness.codex.yaml",
 }
 HARNESS_LOG_DIR = ROOT_DIR / ".run" / "harness-runs"
 HARNESS_RUNS: dict[str, dict] = {}
@@ -171,63 +98,6 @@ def _restore_harness_runs_from_db() -> None:
 
 
 
-def _lane(
-    index: int,
-    title: str,
-    harness: HarnessKind,
-    status: Literal["running", "complete", "needs_you", "idle", "blocked"],
-    progress: int,
-) -> Lane:
-    branch_slug = title.lower().replace(" ", "-").replace("/", "-")[:36]
-    now = time.time()
-    return Lane(
-        id=f"lane-{index}",
-        title=title,
-        harness=harness,
-        status=status,
-        progress=progress,
-        current_stage="gates" if status == "running" else "review",
-        branch=f"feat/{branch_slug}",
-        checks=["api", "fe", "docker", "eval"],
-        cost_usd=round(random.uniform(0.04, 0.8), 2),
-        hallucination_risk=random.choice(["low", "low", "medium"]),
-        updated_at=now,
-        log=[
-            "context packet assembled",
-            "tool schema validation passed",
-            "evaluation gate waiting for latest agent output",
-        ],
-    )
-
-
-def _default_lanes(feature: str) -> list[Lane]:
-    return [
-        _lane(1, feature, "context", "running", 48),
-        _lane(2, "Tool registry and Docker command chain", "tool", "running", 32),
-        _lane(3, "Golden-case evaluation and judge gates", "evaluation", "complete", 100),
-        _lane(4, "Prompt injection and credential audit", "security", "needs_you", 18),
-        _lane(5, "Approval workflow and risk registry", "governance", "idle", 10),
-        _lane(6, "Per-agent cost, drift, and trace metrics", "agentops", "running", 44),
-        _lane(7, "DAG orchestration and repair loop", "orchestration", "complete", 100),
-    ]
-
-
-def _serialize_run(run: Run) -> dict:
-    return {
-        **asdict(run),
-        "lane_count": len(run.lanes),
-        "running_count": sum(1 for lane in run.lanes if lane.status == "running"),
-        "needs_you_count": sum(1 for lane in run.lanes if lane.status in {"needs_you", "blocked"}),
-    }
-
-
-def _read_json(path: Path) -> dict | None:
-    try:
-        return json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return None
-
-
 def _tail(path: Path, limit: int = 120) -> list[str]:
     try:
         lines = path.read_text(errors="ignore").splitlines()
@@ -246,33 +116,6 @@ def _config_agent_model(target_repo: Path, config_name: str) -> str:
     except Exception:
         return ""
     return str((raw.get("agent") or {}).get("model") or "")
-
-
-def _artifact_summary(target_repo: Path) -> list[dict]:
-    artifact_dirs = [
-        target_repo / "docs" / "output",
-        target_repo / "docs" / "sdlc" / "current",
-        target_repo / ".specify" / "harness" / "context",
-    ]
-    items = []
-    for artifact_dir in artifact_dirs:
-        if not artifact_dir.exists():
-            continue
-        for path in sorted(artifact_dir.rglob("*")):
-            if not path.is_file() or path.suffix.lower() not in {".md", ".yaml", ".yml", ".json"}:
-                continue
-            try:
-                stat = path.stat()
-            except OSError:
-                continue
-            items.append({
-                "name": path.name,
-                "path": str(path.relative_to(target_repo)),
-                "size": stat.st_size,
-                "updated_at": stat.st_mtime,
-            })
-    items.sort(key=lambda item: item["updated_at"], reverse=True)
-    return items[:80]
 
 
 def _phase_names(record: dict, state: dict) -> list[str]:
@@ -344,7 +187,15 @@ async def _run_harness_process(run_id: str) -> None:
     target_repo = Path(record["target_repo"])
     config = record.get("config") or TARGET_CONFIGS.get((record["target"], record.get("mode", "expanded")))
     if not config:
-        config = TARGET_CONFIGS.get((record["target"], "expanded"), "harness.yaml")
+        record["status"] = "failed"
+        record["finished_at"] = time.time()
+        db_logger.log_run_updated(
+            run_id,
+            status="failed",
+            finished_at=record["finished_at"],
+            command="missing target harness config",
+        )
+        return
     log_path = Path(record["log_path"])
     HARNESS_LOG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -421,78 +272,9 @@ async def _stop_harness_process(run_id: str) -> None:
         await proc.wait()
 
 
-def _latest_run() -> Run:
-    if not RUNS:
-        run_id = f"demo-{uuid4().hex[:8]}"
-        RUNS[run_id] = Run(
-            id=run_id,
-            feature="Predefined criteria: free-text and protocol-ref rules",
-            status="running",
-            created_at=time.time(),
-            lanes=_default_lanes("Predefined criteria: free-text and protocol-ref rules"),
-        )
-    return max(RUNS.values(), key=lambda item: item.created_at)
-
-
-async def _simulate_run(run_id: str) -> None:
-    while run_id in RUNS:
-        run = RUNS[run_id]
-        if run.status != "running":
-            return
-
-        active_lanes = [lane for lane in run.lanes if lane.status == "running"]
-        if not active_lanes:
-            run.status = "complete"
-            return
-
-        for lane in active_lanes:
-            lane.progress = min(100, lane.progress + random.randint(3, 9))
-            lane.cost_usd = round(lane.cost_usd + random.uniform(0.01, 0.06), 2)
-            lane.updated_at = time.time()
-            lane.log.append(f"{lane.current_stage} advanced to {lane.progress}%")
-            if len(lane.log) > 8:
-                lane.log = lane.log[-8:]
-            if lane.progress >= 100:
-                lane.status = "complete"
-                lane.current_stage = "ship"
-                lane.log.append("lane complete: gates green")
-
-        await asyncio.sleep(3)
-
-
 @app.get("/health")
 def health() -> dict:
     return {"ok": True}
-
-
-@app.get("/api/runs")
-def runs() -> dict:
-    _latest_run()
-    ordered = sorted(RUNS.values(), key=lambda item: item.created_at, reverse=True)
-    return {"runs": [_serialize_run(run) for run in ordered]}
-
-
-@app.post("/api/runs", status_code=201)
-async def create_run(payload: CreateRunRequest) -> dict:
-    run_id = f"run-{uuid4().hex[:10]}"
-    run = Run(
-        id=run_id,
-        feature=payload.feature,
-        status="running",
-        created_at=time.time(),
-        lanes=_default_lanes(payload.feature),
-    )
-    RUNS[run_id] = run
-    asyncio.create_task(_simulate_run(run_id))
-    return _serialize_run(run)
-
-
-@app.get("/api/runs/{run_id}")
-def get_run(run_id: str) -> dict:
-    run = RUNS.get(run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-    return _serialize_run(run)
 
 
 @app.get("/api/harness-targets")
@@ -501,10 +283,10 @@ def harness_targets() -> dict:
         "targets": [
             {
                 "id": target_id,
-                "name": "AINative OKR Claude/GHCP" if target_id == "okr-ghcp" else "Todo App Demo",
+                "name": "AINative OKR Claude/GHCP",
                 "path": str(path.relative_to(ROOT_DIR)),
                 "providers": ["codex", "claude"],
-                "modes": ["expanded", "boss"] if target_id == "okr-ghcp" else ["expanded"],
+                "modes": ["expanded", "boss"],
             }
             for target_id, path in TARGETS.items()
         ]
@@ -527,7 +309,9 @@ def latest_harness_run() -> dict:
 
 @app.post("/api/harness-runs", status_code=201)
 async def create_harness_run(payload: CreateHarnessRunRequest) -> dict:
-    target_repo = TARGETS[payload.target]
+    target_repo = TARGETS.get(payload.target)
+    if not target_repo:
+        raise HTTPException(status_code=404, detail="Harness target not registered")
     if not target_repo.exists():
         raise HTTPException(status_code=404, detail="Target project not found")
 
@@ -536,8 +320,9 @@ async def create_harness_run(payload: CreateHarnessRunRequest) -> dict:
     config = (
         TARGET_CONFIGS.get((payload.target, payload.mode))
         or TARGET_CONFIGS.get((payload.target, "expanded"))
-        or "harness.yaml"
     )
+    if not config:
+        raise HTTPException(status_code=400, detail="Harness config not registered for target/mode")
     record = {
         "id": run_id,
         "feature": payload.feature,

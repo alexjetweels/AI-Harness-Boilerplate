@@ -7,8 +7,9 @@ This repository is a boilerplate for running a gated SDLC workflow around Codex.
 - `apps/dashboard/frontend/`: React dashboard for observing and starting harness runs.
 - `apps/dashboard/backend/`: FastAPI API for dashboard data and harness subprocess execution.
 - `packages/ai-harness/`: Python CLI that drives AI providers through SDLC phases and deterministic gates.
-- `templates/Codex-sdlc/`: Reusable Codex SDLC prompt pack for target projects.
-- `examples/todo-app/`: Demo target project used for end-to-end harness testing.
+- `packages/ai-harness/targets/okr-ghcp/`: Active OKR target adapters used by the dashboard.
+- `templates/generic-sdlc/`: Copyable generic YAML adapter templates for new targets.
+- `AINative_OKR_Claude_GHCP/`: Active OKR prompt/agent target project.
 - `docs/`: Architecture and operating documentation.
 
 ## Default Working Rules
@@ -41,4 +42,6 @@ cd apps/dashboard/frontend && npm run dev
 cd apps/dashboard/frontend && npm run build
 ```
 
-For the generic harness, configure real commands in `packages/ai-harness/harness.sdlc.yaml` before relying on gates.
+For the generic harness templates, copy a file from `templates/generic-sdlc/`
+into the target project and configure real `project` commands before relying on
+gates.

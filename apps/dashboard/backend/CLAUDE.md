@@ -18,4 +18,6 @@ cd apps/dashboard/backend
 python -m compileall app
 ```
 
-If new test tooling is added, update this file and `packages/ai-harness/harness.sdlc.yaml`.
+If new dashboard target tooling is added, update the target adapter under
+`packages/ai-harness/targets/`. For generic starter configs, update
+`templates/generic-sdlc/`.

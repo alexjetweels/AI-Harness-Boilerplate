@@ -21,7 +21,7 @@ def upgrade() -> None:
             feature         TEXT             NOT NULL,
             provider        TEXT             NOT NULL DEFAULT 'codex',
             tech_stack      TEXT             NOT NULL DEFAULT '',
-            target          TEXT             NOT NULL DEFAULT 'todo-app',
+            target          TEXT             NOT NULL DEFAULT 'okr-ghcp',
             mode            TEXT             NOT NULL DEFAULT 'expanded',
             config          TEXT             NOT NULL DEFAULT '',
             target_repo     TEXT             NOT NULL DEFAULT '',

@@ -18,8 +18,7 @@ This package contains the Python harness engine and CLI. The installed command e
 | `src/agentops/state_store.py` | DB-backed run state facade |
 | `src/agentops/db_logger.py` | Structured phase/gate logging |
 | `src/orchestration/orchestrator.py` | Phase state machine, retry, resume |
-| `harness.sdlc.yaml` | Generic SDLC pipeline template |
-| `harness.yaml` | Spec-kit-oriented pipeline |
+| `targets/okr-ghcp/` | Package-owned OKR target adapters used by the dashboard |
 | `evals/` | Golden-case eval harness |
 
 ## Install For Local Development
@@ -40,14 +39,19 @@ PYTHONPATH=packages/ai-harness/src python3 -m cli --help
 
 ## Run Against A Target Project
 
+Dashboard OKR runs use the package-owned adapter:
+
 ```bash
 PYTHONPATH=packages/ai-harness/src python3 -m cli run \
-  --feature "Add secure multi-agent review workflow" \
-  --repo examples/todo-app \
-  --config harness.codex.yaml
+  --feature "Build the OKR web application" \
+  --repo AINative_OKR_Claude_GHCP \
+  --config packages/ai-harness/targets/okr-ghcp/harness.okr.yaml \
+  --provider codex
 ```
 
-`--config` is resolved relative to the target repo.
+Generic starter configs live under `templates/generic-sdlc/`. Copy one into a
+target repo and replace its placeholder project commands before using it as a
+real gate contract.
 
 ## Providers
 
@@ -74,4 +78,3 @@ Codex does not expand Claude Code slash commands directly. The harness inlines `
 ## Safety
 
 `skip_permissions: true` is intended for sandboxed local demos or CI workers. For production use, route tool execution through a stronger H2 Tool Harness and require approvals for destructive or high-risk actions.
-
