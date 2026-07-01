@@ -57,12 +57,12 @@ context:
 agent:
   provider: codex
   bin: codex
-  model: ""
+  model: "gpt-5.4-mini"  # cheapest available Codex model, to minimize token cost
   max_turns: 40
   max_budget_usd: 0
   allowed_tools: "Read,Write,Edit,Bash,Glob,Grep,TodoWrite"
   skip_permissions: true
-  extra_args: []
+  extra_args: ["-c", "model_reasoning_effort=low"]
 
 project:
   build: "docker compose build"

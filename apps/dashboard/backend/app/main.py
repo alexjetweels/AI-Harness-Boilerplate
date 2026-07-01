@@ -916,31 +916,31 @@ async def _run_harness_code_chat(target_repo: Path, payload: dict) -> dict:
 
 
 async def _run_harness_code_chat_background(session_id: str, target_repo: Path, payload: dict) -> None:
-    env = os.environ.copy()
-    harness_src = str(ROOT_DIR / "packages" / "ai-harness" / "src")
-    env["PYTHONPATH"] = harness_src + os.pathsep + env.get("PYTHONPATH", "")
-    payload = {**payload, "session_id": session_id}
-
-    proc = await asyncio.create_subprocess_exec(
-        sys.executable,
-        "-m",
-        "cli",
-        "code-chat",
-        "--stream",
-        "--repo",
-        str(target_repo),
-        cwd=str(ROOT_DIR),
-        env=env,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    assert proc.stdin is not None
-    proc.stdin.write(json.dumps(payload).encode("utf-8"))
-    await proc.stdin.drain()
-    proc.stdin.close()
-
     try:
+        env = os.environ.copy()
+        harness_src = str(ROOT_DIR / "packages" / "ai-harness" / "src")
+        env["PYTHONPATH"] = harness_src + os.pathsep + env.get("PYTHONPATH", "")
+        payload = {**payload, "session_id": session_id}
+
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "cli",
+            "code-chat",
+            "--stream",
+            "--repo",
+            str(target_repo),
+            cwd=str(ROOT_DIR),
+            env=env,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        assert proc.stdin is not None
+        proc.stdin.write(json.dumps(payload).encode("utf-8"))
+        await proc.stdin.drain()
+        proc.stdin.close()
+
         assert proc.stdout is not None
         async for raw_line in proc.stdout:
             line = raw_line.decode("utf-8", errors="ignore").strip()
@@ -1017,6 +1017,7 @@ async def stream_copilot_session(session_id: str) -> StreamingResponse:
 
     async def events():
         last_updated = None
+        last_ping = _now()
         while True:
             session = COPILOT_SESSIONS.get(session_id)
             if not session:
@@ -1029,9 +1030,20 @@ async def stream_copilot_session(session_id: str) -> StreamingResponse:
             if session.get("status") in COPILOT_TERMINAL_STATUSES:
                 yield f"event: done\ndata: {json.dumps(session, ensure_ascii=False)}\n\n"
                 return
+            if _now() - last_ping >= 10:
+                last_ping = _now()
+                yield ": ping\n\n"
             await asyncio.sleep(0.5)
 
-    return StreamingResponse(events(), media_type="text/event-stream")
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/api/copilot/sessions/{session_id}/approve")
