@@ -91,14 +91,14 @@ def build(repo: str, run_id: str, feature: str, cfg: dict) -> dict:
         header += "## Missing Required Sources\n\n" + "\n".join(f"- `{item}`" for item in missing_required) + "\n\n"
 
     packet_content = header + "\n".join(sections)
-
-    manifest = {
+    manifest_json = json.dumps({
         "run_id": run_id,
         "feature": feature,
         "missing_required": missing_required,
         "source_count": len(manifest_sources),
         "sources": [item.__dict__ for item in manifest_sources],
-    }
+    }, indent=2)
+
     packet_id = storage.save_artifact(
         run_id,
         "context_packet",
@@ -110,13 +110,33 @@ def build(repo: str, run_id: str, feature: str, cfg: dict) -> dict:
         run_id,
         "context_manifest",
         f"{run_id}.manifest.json",
-        content=json.dumps(manifest, indent=2),
-        payload=manifest,
+        content=manifest_json,
+        payload=json.loads(manifest_json),
     )
 
+    # Also persist to real files under the run repo so agents can read the
+    # packet directly with their Read tool. The `db://...` id is only used
+    # for the H1 "artifact exists" gate — it is not a filesystem path, so
+    # without this the orchestrator has no choice but to re-paste the full
+    # packet text into every single phase prompt (see orchestrator._inject_context).
+    packet_rel = manifest_rel = None
+    packet_dir = str(cfg.get("packet_dir") or "").strip()
+    if packet_dir:
+        try:
+            out_dir = repo_path / packet_dir
+            out_dir.mkdir(parents=True, exist_ok=True)
+            packet_path = out_dir / f"{run_id}.context.md"
+            manifest_path = out_dir / f"{run_id}.manifest.json"
+            packet_path.write_text(packet_content, encoding="utf-8")
+            manifest_path.write_text(manifest_json, encoding="utf-8")
+            packet_rel = packet_path.relative_to(repo_path).as_posix()
+            manifest_rel = manifest_path.relative_to(repo_path).as_posix()
+        except OSError:
+            packet_rel = manifest_rel = None
+
     return {
-        "context_packet": f"db://harness_artifacts/{packet_id}",
-        "context_manifest": f"db://harness_artifacts/{manifest_id}",
+        "context_packet": packet_rel or f"db://harness_artifacts/{packet_id}",
+        "context_manifest": manifest_rel or f"db://harness_artifacts/{manifest_id}",
         "context_packet_id": packet_id,
         "context_manifest_id": manifest_id,
         "context_packet_content": packet_content,

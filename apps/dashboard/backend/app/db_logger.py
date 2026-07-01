@@ -55,7 +55,7 @@ def log_run_updated(run_id: str, **fields) -> None:
     if not fields:
         return
     allowed = {
-        "status", "started_at", "finished_at", "cost_usd", "model",
+        "status", "started_at", "finished_at", "cost_usd", "model", "provider",
         "input_tokens", "output_tokens", "total_tokens",
         "current_phase", "feature_dir", "pid", "return_code", "command",
     }
@@ -187,6 +187,56 @@ def _emit_event(run_id: str, event_type: str, phase: str | None,
                 )
     except Exception as exc:
         print(f"[db_logger] _emit_event failed: {exc}")
+
+
+# ── File extractions ──────────────────────────────────────────────────────────
+# Unlike the loggers above, these are on the primary request path (the API
+# caller needs the real outcome), so errors propagate instead of being
+# swallowed.
+
+def insert_file_extraction(original_filename: str, file_type: str, file_size_bytes: int,
+                           extracted_markdown: str, doc_type: str,
+                           run_id: str | None = None) -> int:
+    now = time.time()
+    with db.get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO file_extractions
+                    (run_id, original_filename, file_type, file_size_bytes,
+                     extracted_markdown, doc_type, extraction_status,
+                     created_at, extracted_at)
+                VALUES (%s, %s, %s, %s, %s, %s, 'complete', %s, %s)
+                RETURNING id
+                """,
+                (run_id, original_filename, file_type, file_size_bytes,
+                 extracted_markdown, doc_type, now, now),
+            )
+            return cur.fetchone()[0]
+
+
+def fetch_file_extraction(extraction_id: int) -> dict | None:
+    with db.get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM file_extractions WHERE id = %s",
+                (extraction_id,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
+def attach_file_extraction_to_run(extraction_id: int, run_id: str, storage_path: str) -> None:
+    with db.get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE file_extractions
+                   SET run_id = %s, storage_path = %s
+                 WHERE id = %s
+                """,
+                (run_id, storage_path, extraction_id),
+            )
 
 
 # ── Query helpers (used by API endpoints) ────────────────────────────────────

@@ -53,8 +53,26 @@ def _write_artifact(run_id: str, artifact_type: str, name: str, content: str) ->
     storage.save_artifact(run_id, artifact_type, name, content=content)
 
 
-def _inject_context(prompt: str, state: dict) -> str:
-    content = state.get("ctx", {}).get("context_packet_content")
+def _inject_context(prompt: str, state: dict, attempt: int) -> str:
+    if attempt != 1:
+        # Repair retries resume the same agent session, which already saw
+        # the context packet on attempt 1 — re-pasting it here would just
+        # duplicate that content in every repair prompt for no benefit.
+        return prompt
+
+    ctx = state.get("ctx", {})
+    packet_path = ctx.get("context_packet")
+    if packet_path and not str(packet_path).startswith("db://"):
+        return (
+            "The harness context packet for this run is available at "
+            f"`{packet_path}`. Read that file with your Read tool first and use it "
+            "as the authoritative run context. Do not read unrelated files unless "
+            "the phase instructions require it.\n\n"
+            "# Phase Prompt\n\n"
+            f"{prompt}"
+        )
+
+    content = ctx.get("context_packet_content")
     if not content:
         return prompt
     return (
@@ -85,6 +103,13 @@ def run(cfg, feature: str, run_id: str, repo: str = ".",
     state.setdefault("output_tokens", 0)
     state.setdefault("total_tokens", 0)
 
+    if resume:
+        # A resume (e.g. a dashboard retry) is re-entering after a failed/
+        # escalated attempt — reflect that immediately so status readers
+        # don't keep showing the stale terminal status while it runs.
+        state["status"] = "running"
+        state_store.save(state_dir, state)
+
     for phase in cfg.phases:
         if state["phases"].get(phase.name, {}).get("status") == "done":
             continue
@@ -107,13 +132,13 @@ def run(cfg, feature: str, run_id: str, repo: str = ".",
             if phase.command:
                 if attempt == 1:
                     prompt = _expand(phase.command, _ctx_for(state))
-                    res = agent_runner.run(cfg.agent, _inject_context(prompt, state), cwd=repo,
+                    res = agent_runner.run(cfg.agent, _inject_context(prompt, state, attempt), cwd=repo,
                                           run_id=run_id, phase_name=phase.name)
                 else:
                     # Repair: resume the same session, hand back the failure report.
                     prompt = ("The previous attempt did not pass verification. "
                               "Fix the following issues, then stop:\n\n" + (feedback or ""))
-                    res = agent_runner.run(cfg.agent, _inject_context(prompt, state),
+                    res = agent_runner.run(cfg.agent, _inject_context(prompt, state, attempt),
                                           resume_session=session, cwd=repo,
                                           run_id=run_id, phase_name=phase.name)
 

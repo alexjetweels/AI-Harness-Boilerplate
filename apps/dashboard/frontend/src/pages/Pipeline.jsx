@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Activity, ArrowLeft, ChevronLeft, Square } from 'lucide-react';
+import { Activity, ArrowLeft, ChevronLeft, RotateCcw, Square } from 'lucide-react';
 import {
   statusLabel,
   useHarnessRun,
@@ -14,8 +14,18 @@ import {
 
 /* ── Pipeline header ─────────────────────────────────────────────────────── */
 
-function PipelineHeader({ run, onBack, onStop, stopping }) {
+function PipelineHeader({
+  run,
+  onBack,
+  onStop,
+  stopping,
+  onRetry,
+  retrying,
+  retryProvider,
+  onRetryProviderChange,
+}) {
   const canStop = run?.status === 'running' || run?.status === 'queued';
+  const canRetry = ['failed', 'escalated', 'stopped'].includes(run?.status);
   const doneCount = (run?.phases || []).filter((p) => p.status === 'done').length;
   const totalCount = run?.phases?.length || 0;
 
@@ -63,6 +73,26 @@ function PipelineHeader({ run, onBack, onStop, stopping }) {
           Stop
         </button>
       )}
+
+      {canRetry && (
+        <div className="retryGroup">
+          <select
+            className="retryProviderSelect"
+            value={retryProvider}
+            onChange={(e) => onRetryProviderChange(e.target.value)}
+            disabled={retrying}
+            aria-label="Provider for retry"
+          >
+            <option value="">Same provider</option>
+            <option value="claude">Claude Code</option>
+            <option value="codex">Codex</option>
+          </select>
+          <button className="retryBtn" onClick={onRetry} disabled={retrying}>
+            <RotateCcw size={13} />
+            {retrying ? 'Retrying…' : 'Retry'}
+          </button>
+        </div>
+      )}
     </header>
   );
 }
@@ -79,6 +109,8 @@ export default function PipelinePage() {
 
   const [selectedPhase, setSelectedPhase] = useState(null);
   const [stopping, setStopping] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [retryProvider, setRetryProvider] = useState('');
 
   const timelineMap = useMemo(() => {
     const map = {};
@@ -103,6 +135,21 @@ export default function PipelinePage() {
       await reload();
     } finally {
       setStopping(false);
+    }
+  }
+
+  async function retryRun() {
+    if (!run?.id) return;
+    setRetrying(true);
+    try {
+      await fetch(`/api/harness-runs/${run.id}/retry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: retryProvider || null }),
+      });
+      await reload();
+    } finally {
+      setRetrying(false);
     }
   }
 
@@ -133,6 +180,10 @@ export default function PipelinePage() {
         onBack={() => navigate('/')}
         onStop={stopRun}
         stopping={stopping}
+        onRetry={retryRun}
+        retrying={retrying}
+        retryProvider={retryProvider}
+        onRetryProviderChange={setRetryProvider}
       />
 
       <div className="pipelinePageBody">

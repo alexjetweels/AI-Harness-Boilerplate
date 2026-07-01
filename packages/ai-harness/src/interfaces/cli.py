@@ -1,5 +1,7 @@
 """`harness` CLI: run, resume, status."""
 import argparse
+import asyncio
+import json
 import os
 import re
 import sys
@@ -7,6 +9,7 @@ import time
 
 from agentops import state_store
 from core import config as config_mod
+from orchestration import code_chat
 from orchestration import orchestrator
 
 
@@ -47,13 +50,34 @@ def main(argv=None) -> int:
     rs.add_argument("run_id")
     rs.add_argument("--config", default="harness.yaml")
     rs.add_argument("--repo", default=".")
+    rs.add_argument("--provider", choices=["claude", "codex"], default=None)
 
     st = sub.add_parser("status", help="Show run status")
     st.add_argument("run_id")
     st.add_argument("--config", default="harness.yaml")
     st.add_argument("--repo", default=".")
 
+    cc = sub.add_parser("code-chat", help="Run Copilot-style code chat workflow from JSON stdin")
+    cc.add_argument("--repo", default=".")
+    cc.add_argument("--stream", action="store_true", help="Emit session snapshots as JSONL")
+
     args = p.parse_args(argv)
+
+    if args.cmd == "code-chat":
+        try:
+            payload = json.loads(sys.stdin.read() or "{}")
+            if args.stream:
+                def emit(snapshot: dict) -> None:
+                    print(json.dumps(snapshot, ensure_ascii=False), flush=True)
+                result = asyncio.run(code_chat.run(payload, repo=args.repo, emit=emit))
+            else:
+                result = code_chat.run_sync(payload, repo=args.repo)
+            print(json.dumps(result, ensure_ascii=False))
+            return 0 if result.get("status") not in {"failed"} else 1
+        except Exception as exc:
+            print(json.dumps({"status": "failed", "error": str(exc)}, ensure_ascii=False))
+            return 1
+
     cfg = config_mod.load(_config_path(args.repo, args.config))
 
     if args.cmd == "run":
@@ -63,6 +87,7 @@ def main(argv=None) -> int:
         return orchestrator.run(cfg, args.feature, run_id, repo=args.repo, ctx_extra=ctx_extra)
 
     if args.cmd == "resume":
+        _override_provider(cfg, args.provider)
         s = state_store.load(os.path.join(args.repo, cfg.state_dir), args.run_id)
         return orchestrator.run(cfg, s["feature"], args.run_id, repo=args.repo, resume=True)
 

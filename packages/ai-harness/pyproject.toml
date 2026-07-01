@@ -3,7 +3,7 @@ name = "ai-harness"
 version = "0.1.0"
 description = "Closed-loop SDLC harness on top of GitHub spec-kit and Claude Code"
 requires-python = ">=3.11"
-dependencies = ["pyyaml>=6", "psycopg2-binary>=2.9"]
+dependencies = ["pyyaml>=6", "psycopg2-binary>=2.9", "certifi>=2026.6.17"]
 
 [project.scripts]
 harness = "interfaces.cli:main"

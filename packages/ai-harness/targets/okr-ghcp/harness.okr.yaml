@@ -99,6 +99,9 @@ phases:
     #         - "node_modules/**"
 
   - name: system-srs
+    # One-time, pre-flow per README ("not part of the main flow steps") —
+    # skip regeneration on repeat runs once the system-wide SRS already exists.
+    skip_if_exists: "docs/output/srs-systems/srs-overview-system.md"
     command: |
       /okr.srs.getsrsall
       feature: {feature}
@@ -108,7 +111,7 @@ phases:
       language: Vietnamese
     max_attempts: 2
     gates:
-      - { name: system-srs-output, type: glob_nonempty, params: { glob: "docs/output/**/*.md" } }
+      - { name: system-srs-output, type: glob_nonempty, params: { glob: "docs/output/srs-systems/**/*.md" } }
 
   - name: srs
     command: |
@@ -209,6 +212,18 @@ phases:
     gates:
       - { name: dd-output, type: glob_nonempty, params: { glob: "docs/output/ipa-docs/dd/**/*.md" } }
 
+  - name: tasks
+    command: |
+      /speckit.tasks
+      feature: {feature}
+      context-packet: {context_packet}
+      context-manifest: {context_manifest}
+      mode: harness-expanded
+      language: Vietnamese
+    max_attempts: 2
+    gates:
+      - { name: tasks-output, type: glob_nonempty, params: { glob: "{feature_dir}/tasks.md" } }
+
   - name: generate-tests
     command: |
       /okr.testkit
@@ -221,18 +236,6 @@ phases:
     max_attempts: 2
     gates:
       - { name: testcase-output, type: glob_nonempty, params: { glob: "docs/output/ipa-docs/testcase/**/*.md" } }
-
-  - name: tasks
-    command: |
-      /speckit.tasks
-      feature: {feature}
-      context-packet: {context_packet}
-      context-manifest: {context_manifest}
-      mode: harness-expanded
-      language: Vietnamese
-    max_attempts: 2
-    gates:
-      - { name: tasks-output, type: glob_nonempty, params: { glob: "{feature_dir}/tasks.md" } }
 
   - name: implement
     command: |

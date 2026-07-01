@@ -207,15 +207,17 @@ export const DEFAULT_PIPELINE = [
   'basic-design',
   'specify',
   'clarify',
+  'review-spec',
   'plan',
-  'tasks',
-  'analyze',
+  'review-plan',
   'detail-design',
+  'tasks',
+  'generate-tests',
   'implement',
-  'test',
-  'review',
-  'security-review',
-  'verify',
+  'review-code',
+  'run-tests',
+  'H4-generated-security',
+  'verify-launch',
 ];
 
 export const LAYER_STYLE = {
@@ -994,6 +996,14 @@ export function AppNav() {
           }
         >
           New Run
+        </NavLink>
+        <NavLink
+          to='/copilot'
+          className={({ isActive }) =>
+            `appNav-link${isActive ? ' appNav-link--active' : ''}`
+          }
+        >
+          Code Chat
         </NavLink>
       </div>
     </nav>

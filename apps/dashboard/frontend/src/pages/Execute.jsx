@@ -1,26 +1,21 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, Play, Zap, Upload, FileText, FileSpreadsheet, X, Paperclip } from 'lucide-react';
+import { Activity, Play, Zap, Upload, FileText, X } from 'lucide-react';
 import { API_BASE, DEFAULT_TASK, AppNav } from '../shared';
 
 /* ── File type helpers ─────────────────────────────────────────────────────── */
 
+// Only .md uploads are wired up end-to-end today (see POST /api/file-extractions,
+// which writes the raw content straight into the target repo's docs/input/ tree).
+// pdf/xlsx/txt extraction is not implemented yet, so they are left out of the
+// picker rather than accepted and then rejected by the backend.
 const ACCEPTED_TYPES = {
-  'application/pdf':                                            { label: 'PDF',   className: 'chip-pdf'   },
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { label: 'XLSX', className: 'chip-excel' },
-  'application/vnd.ms-excel':                                  { label: 'XLS',   className: 'chip-excel' },
-  'text/plain':                                                 { label: 'TXT',   className: 'chip-txt'   },
+  'text/markdown': { label: 'MD', className: 'chip-md' },
 };
-const ACCEPTED_EXT = '.pdf,.xlsx,.xls,.txt';
+const ACCEPTED_EXT = '.md';
 
 function fileTypeMeta(file) {
-  return (
-    ACCEPTED_TYPES[file.type] ||
-    (file.name.endsWith('.xlsx') ? { label: 'XLSX', className: 'chip-excel' } :
-     file.name.endsWith('.xls')  ? { label: 'XLS',  className: 'chip-excel' } :
-     file.name.endsWith('.pdf')  ? { label: 'PDF',  className: 'chip-pdf'   } :
-                                   { label: 'TXT',  className: 'chip-txt'   })
-  );
+  return ACCEPTED_TYPES[file.type] || { label: 'MD', className: 'chip-md' };
 }
 
 function fmtSize(bytes) {
@@ -29,21 +24,24 @@ function fmtSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function FileIcon({ file }) {
-  const ext = file.name.split('.').pop()?.toLowerCase();
-  if (ext === 'xlsx' || ext === 'xls') return <FileSpreadsheet size={13} aria-hidden />;
+function FileIcon() {
   return <FileText size={13} aria-hidden />;
 }
 
 /* ── FileUploadZone ─────────────────────────────────────────────────────────── */
 
-function FileUploadZone({ files, onChange }) {
+const DOC_TYPES = [
+  { value: 'requirement',     label: 'Requirement' },
+  { value: 'change-request',  label: 'Change Request' },
+  { value: 'architecture',    label: 'Technical Architecture' },
+];
+
+function FileUploadZone({ files, onChange, docType, onDocTypeChange }) {
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
 
   const addFiles = useCallback((incoming) => {
-    const valid = Array.from(incoming).filter((f) => ACCEPTED_TYPES[f.type] ||
-      /\.(pdf|xlsx?|txt)$/i.test(f.name));
+    const valid = Array.from(incoming).filter((f) => /\.md$/i.test(f.name));
     if (!valid.length) return;
     onChange((prev) => {
       const seen = new Set(prev.map((f) => f.name + f.size));
@@ -63,7 +61,7 @@ function FileUploadZone({ files, onChange }) {
   return (
     <div className="uploadSection">
       <label htmlFor="file-upload-input">
-        <span>Attachments <small className="uploadLabel-hint">PDF · XLSX · XLS · TXT</small></span>
+        <span>Attachments <small className="uploadLabel-hint">Markdown (.md) only</small></span>
       </label>
 
       {/* drop zone */}
@@ -96,6 +94,17 @@ function FileUploadZone({ files, onChange }) {
         onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
       />
 
+      {files.length > 0 && (
+        <label className="docTypeSelect">
+          <span>Document type</span>
+          <select value={docType} onChange={(e) => onDocTypeChange(e.target.value)}>
+            {DOC_TYPES.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </label>
+      )}
+
       {/* file chips */}
       {files.length > 0 && (
         <ul className="fileChipList" aria-label="Attached files">
@@ -103,7 +112,7 @@ function FileUploadZone({ files, onChange }) {
             const meta = fileTypeMeta(file);
             return (
               <li key={`${file.name}-${file.size}`} className="fileChip">
-                <FileIcon file={file} />
+                <FileIcon />
                 <span className={`fileChip-type ${meta.className}`}>{meta.label}</span>
                 <span className="fileChip-name" title={file.name}>{file.name}</span>
                 <span className="fileChip-size">{fmtSize(file.size)}</span>
@@ -124,20 +133,29 @@ function FileUploadZone({ files, onChange }) {
   );
 }
 
-/* ── Upload files after run created ────────────────────────────────────────── */
+/* ── Upload files before the run is created ──────────────────────────────────
+ * Files are uploaded standalone (no run_id yet) so their content can be
+ * validated and stored first; the returned extraction ids are then attached
+ * when the harness run is created, which writes them into the target repo
+ * before the harness subprocess starts. Uploading after the run already
+ * exists would race the harness's H1-context phase, which reads the target
+ * repo's docs/input/ tree almost immediately. */
 
-async function uploadFiles(files, runId) {
-  if (!files.length) return;
+async function uploadFiles(files, docType) {
+  if (!files.length) return [];
   const form = new FormData();
   files.forEach((f) => form.append('files', f));
-  try {
-    await fetch(`${API_BASE}/api/file-extractions?run_id=${encodeURIComponent(runId)}`, {
-      method: 'POST',
-      body: form,
-    });
-  } catch {
-    // Silently swallow — extraction endpoint may not be wired yet.
+  form.append('doc_type', docType);
+  const res = await fetch(`${API_BASE}/api/file-extractions`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `Upload failed (${res.status})`);
   }
+  const payload = await res.json();
+  return payload.files.map((f) => f.id);
 }
 
 /* ── LaunchForm ─────────────────────────────────────────────────────────────── */
@@ -146,6 +164,7 @@ function LaunchForm({ onRunStarted }) {
   const [feature,  setFeature]  = useState(DEFAULT_TASK);
   const [provider, setProvider] = useState('claude');
   const [files,    setFiles]    = useState([]);
+  const [docType,  setDocType]  = useState('requirement');
   const [starting, setStarting] = useState(false);
   const [error,    setError]    = useState('');
 
@@ -154,15 +173,14 @@ function LaunchForm({ onRunStarted }) {
     setStarting(true);
     setError('');
     try {
+      const extractionIds = await uploadFiles(files, docType);
       const res = await fetch(`${API_BASE}/api/harness-runs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ feature, provider, mode: 'expanded' }),
+        body: JSON.stringify({ feature, provider, mode: 'expanded', extraction_ids: extractionIds }),
       });
       if (!res.ok) throw new Error(`API ${res.status}`);
       const payload = await res.json();
-      // Upload files in background — don't block navigation.
-      uploadFiles(files, payload.id);
       onRunStarted(payload.id);
     } catch (err) {
       setError(err.message || 'Failed to start run');
@@ -184,7 +202,7 @@ function LaunchForm({ onRunStarted }) {
           <textarea value={feature} onChange={(e) => setFeature(e.target.value)} rows={3} />
         </label>
 
-        <FileUploadZone files={files} onChange={setFiles} />
+        <FileUploadZone files={files} onChange={setFiles} docType={docType} onDocTypeChange={setDocType} />
 
         <div className="launchCard-row2">
           <label>
