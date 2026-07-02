@@ -92,5 +92,26 @@ Steps with primary artifacts that MUST be verified on disk:
 | 8 | okr.dd | `dd` | `docs/output/ipa-docs/dd/dd-*.md` |
 | 8b | okr.testkit | `testcases` | `docs/output/ipa-docs/testcase/testcase-*.md` |
 | 9 | speckit.tasks | `tasks` | `docs/output/specs/*/tasks.md` |
+| 10 | speckit.implement | `code` | `backend/src/**/*.ts` and/or `frontend/src/**/*.tsx` (per `scope` dispatched) |
 
 Review steps (5, 7, 11) and the launch step (13) produce reports only — no primary artifact to verify beyond the report file itself.
+
+## STEP 10 Code-Existence Check
+
+A phase report existing is not evidence that implementation happened — STEP 10's job is to
+produce source code. In addition to the report file, the Boss MUST verify with Glob:
+
+```
+[ ] At least one file changed under backend/src/**  (unless scope=frontend/ only)
+[ ] At least one file changed under frontend/src/** (unless scope=backend/ only)
+[ ] metrics.files-created + metrics.files-modified > 0 in the STEP-RESULT block
+```
+
+If this check fails (zero files created/modified), apply the normal `gate-retry-protocol.md`
+retry loop for this step: re-invoke with a corrective instruction referencing
+`implement-delegation.md`, and escalate to the user after 5 retries exactly as that protocol
+already specifies.
+
+Per `implement-delegation.md`, `backend/`/`frontend/` not existing yet is the expected state
+before Step 10 runs (no earlier step creates source code), so the corrective instruction should
+point that out explicitly rather than repeating a generic "write the file" prompt.

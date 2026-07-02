@@ -1,0 +1,92 @@
+{
+  "run_id": "ui-cd31146ca7",
+  "feature": "Build the OKR web application from the imported requirements, change requests, and technical architecture",
+  "missing_required": [],
+  "source_count": 12,
+  "sources": [
+    {
+      "path": "CLAUDE.md",
+      "role": "target-guidance",
+      "required": true,
+      "size": 20028,
+      "sha256": "61c0a95703fec4f33e3549c593fd60c29bd54eb8e897e7a7bb65b4726d17f568"
+    },
+    {
+      "path": "README.md",
+      "role": "target-flow",
+      "required": true,
+      "size": 23024,
+      "sha256": "47e03938339c2acc3e5b8497819938a00ff29f916fc59efbd1f931baf28527ad"
+    },
+    {
+      "path": ".specify/memory/constitution.md",
+      "role": "constitution",
+      "required": true,
+      "size": 5878,
+      "sha256": "6ad57b6aa30b24f416cf28d5a560c84467ffe3893c2e52025a4303cb7f1d6c45"
+    },
+    {
+      "path": ".claude/agents/protocols/report-gate-protocol.md",
+      "role": "agent-protocol",
+      "required": true,
+      "size": 4735,
+      "sha256": "b3905fed35196f98e8e16f86571c4b5f15aa1a61dce25fcd0bb1d65fef2a564a"
+    },
+    {
+      "path": ".claude/agents/protocols/timestamp-protocol.md",
+      "role": "agent-protocol",
+      "required": true,
+      "size": 866,
+      "sha256": "060ee645d3e5e1ed3fd2c709a8de9549f8e95ac29a736b0231d692e21b640236"
+    },
+    {
+      "path": "docs/input/change-request/change-0404-sidebar.md",
+      "role": "business-requirements",
+      "required": true,
+      "size": 292,
+      "sha256": "33cec65a9d7368168b6f415bd0b3c158685668291035fa430a324178b90fbb65"
+    },
+    {
+      "path": "docs/input/change-request/change-0405.md",
+      "role": "business-requirements",
+      "required": true,
+      "size": 384,
+      "sha256": "ad7fe332b132136fdc811b4955813537feb278bf441f7a0de6df5969c974fdc1"
+    },
+    {
+      "path": "docs/input/change-request/change-0406.md",
+      "role": "business-requirements",
+      "required": true,
+      "size": 588,
+      "sha256": "430a96c62f45c36150bddc7be6557c639339c0e486361647676378629ba7fe4a"
+    },
+    {
+      "path": "docs/input/okr-requirement.md",
+      "role": "business-requirements",
+      "required": true,
+      "size": 14644,
+      "sha256": "82b6651b91e0a5c2d0964469102da8a5140d006f11c573ac3eea4ba865e4e775"
+    },
+    {
+      "path": "docs/technical_architecture.md",
+      "role": "technical-architecture",
+      "required": true,
+      "size": 24088,
+      "sha256": "2b10be62e2e567291e985cf0efedb5805b4e9a39397b4715e10a9556cfa7a475"
+    },
+    {
+      "path": ".claude/agents/protocols/auto-resolve-protocol.md",
+      "role": "agent-protocol",
+      "required": true,
+      "size": 1555,
+      "sha256": "34617d6924913ed3f8b867e2a7bea3fb44b12be7f521048325c800d043774c82"
+    },
+    {
+      "path": ".claude/agents/protocols/implement-delegation.md",
+      "role": "agent-protocol",
+      "required": true,
+      "size": 5216,
+      "sha256": "8918eb54ea9008dcf7537923fc07a5f35efa2bdfb15347383e6f9e05721b274e"
+    }
+  ]
+}

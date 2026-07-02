@@ -161,8 +161,8 @@ def run_escalated(run_id: str, phase_name: str, reason: str) -> None:
             with conn.cursor() as cur:
                 cur.execute(
                     "UPDATE harness_runs SET status = 'escalated', "
-                    "current_phase = %s WHERE run_id = %s",
-                    (phase_name, run_id),
+                    "current_phase = %s, finished_at = %s WHERE run_id = %s",
+                    (phase_name, time.time(), run_id),
                 )
         _emit(run_id, "escalated", phase_name,
               f"⛔ Run escalated at phase '{phase_name}'",

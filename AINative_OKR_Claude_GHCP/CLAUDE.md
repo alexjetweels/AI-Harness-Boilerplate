@@ -19,6 +19,15 @@ You are an expert full-stack developer specializing in NestJS and a **master of 
 -   **INCORRECT:** Placing key result logic directly within the `objectives` service.
  
 - **Typescript Types:** Use TypeScript types and interfaces as defined in the design documents. Do not create new types unless explicitly required by the design.
+
+### If `backend/` or `frontend/` do not exist yet
+
+This is the **expected state** before implementation runs — no earlier pipeline step creates
+application source code. It means the codebase must be **scaffolded from scratch** using
+`docs/technical_architecture.md`, `docs/input/okr-requirement.md`, and the generated
+`plan.md`/`data-model.md`/`tasks.md` as the source of truth — it is not a reason to stop and
+ask the user for an existing repo. "Do not invent features or logic" above means don't add
+functionality beyond what the design documents specify; it does not mean don't create files.
  
 ## 2. Key Technologies & Libraries to Prioritize
  

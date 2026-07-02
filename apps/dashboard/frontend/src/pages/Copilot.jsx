@@ -4,21 +4,24 @@ import {
   Bot,
   Check,
   Code2,
+  File,
   FileCode2,
-  FilePlus2,
+  FileText,
+  Image as ImageIcon,
   LayoutDashboard,
-  PanelLeft,
   Plus,
   Send,
+  ShieldAlert,
   X,
 } from 'lucide-react';
 import { API_BASE, StatusPill, relativeTime } from '../shared';
 
 const UPLOAD_TARGETS = [
-  { value: 'frontend/uploads', label: 'Frontend' },
-  { value: 'backend/uploads', label: 'Backend' },
-  { value: 'apps/frontend/uploads', label: 'App Frontend' },
-  { value: 'apps/backend/uploads', label: 'App Backend' },
+  { value: 'docs/sdlc/current/uploads', label: 'Context', kind: 'context' },
+  { value: 'frontend/uploads', label: 'Frontend source', kind: 'source' },
+  { value: 'backend/uploads', label: 'Backend source', kind: 'source' },
+  { value: 'apps/frontend/uploads', label: 'App Frontend source', kind: 'source' },
+  { value: 'apps/backend/uploads', label: 'App Backend source', kind: 'source' },
 ];
 
 const MODEL_OPTIONS = [
@@ -34,6 +37,60 @@ function readFileAsText(file) {
     reader.onerror = () => reject(reader.error || new Error('Unable to read file'));
     reader.readAsText(file);
   });
+}
+
+function formatFileSize(size) {
+  if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.ceil(size / 1024))} KB`;
+}
+
+function formatTokens(count) {
+  if (!count) return '0';
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
+  return String(count);
+}
+
+function fileId(file) {
+  return `${file.name}-${file.size}-${file.lastModified}`;
+}
+
+function uploadType(name, type = '') {
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  if (type.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
+    return { label: 'Image', icon: ImageIcon, tone: 'image' };
+  }
+  if (ext === 'pdf') return { label: 'Pdf', icon: FileText, tone: 'pdf' };
+  if (['doc', 'docx'].includes(ext)) return { label: 'Doc', icon: FileText, tone: 'doc' };
+  if (['md', 'txt'].includes(ext)) return { label: 'Text', icon: FileText, tone: 'text' };
+  if (['js', 'jsx', 'ts', 'tsx', 'py', 'css', 'html', 'json', 'yaml', 'yml'].includes(ext)) {
+    return { label: ext.toUpperCase(), icon: FileCode2, tone: 'code' };
+  }
+  return { label: ext ? ext.toUpperCase() : 'File', icon: File, tone: 'file' };
+}
+
+function UploadFileChip({ file, onRemove }) {
+  const meta = uploadType(file.name, file.type);
+  const Icon = meta.icon;
+
+  return (
+    <div className="ccUploadFile">
+      {file.previewUrl ? (
+        <img src={file.previewUrl} alt="" />
+      ) : (
+        <span className={`ccUploadFileIcon ccUploadFileIcon--${meta.tone}`}>
+          <Icon size={18} />
+        </span>
+      )}
+      <div>
+        <strong>{file.name}</strong>
+        <small>{meta.label} · {formatFileSize(file.size)}</small>
+      </div>
+      <button type="button" onClick={onRemove} aria-label={`Remove ${file.name}`}>
+        <X size={14} />
+      </button>
+    </div>
+  );
 }
 
 function SessionRow({ session, active, onSelect }) {
@@ -54,7 +111,7 @@ function activityItems(session, busy) {
     return [{
       type: 'tool',
       title: 'Waiting for request',
-      body: 'Send a prompt or upload a file to start a harness-managed code chat.',
+      body: 'Send a prompt or upload a file to start a full SDLC run in HARNESS_COPILOT.',
       state: 'done',
     }];
   }
@@ -62,18 +119,48 @@ function activityItems(session, busy) {
   const items = [
     {
       type: 'tool',
-      title: 'Harness code-chat',
-      body: 'Delegated generation, validation, and repair to packages/ai-harness.',
+      title: 'HARNESS_COPILOT target',
+      body: `Generated source and SDLC artifacts are written under ${session.target_repo || 'HARNESS_COPILOT'}.`,
       state: 'done',
     },
-    {
+  ];
+
+  if (session.guard?.status === 'blocked' || session.status === 'blocked') {
+    items.push({
+      type: 'error',
+      title: 'Security harness',
+      body: session.guard?.message || session.error || 'Request blocked by Copilot security guard.',
+      state: 'error',
+      steps: session.guard?.reasons || [],
+    });
+    return items;
+  }
+
+  if (session.sdlc_phases?.length) {
+    const failed = session.sdlc_phases.some((phase) => phase.status === 'error');
+    const active = session.sdlc_phases.some((phase) => phase.status === 'running');
+    const byPhase = session.token_usage?.by_phase || {};
+    items.push({
+      type: 'thinking',
+      title: 'SDLC pipeline',
+      body: session.reasoning_summary || session.plan?.summary || 'Running AINative-style gated phases with DeepSeek.',
+      state: failed ? 'error' : active || busy ? 'active' : 'done',
+      steps: session.sdlc_phases.map((phase) => {
+        const marker = phase.status === 'done' ? 'done' : phase.status === 'running' ? 'running' : phase.status === 'error' ? 'error' : 'pending';
+        const phaseTokens = byPhase[phase.id];
+        const tokenLabel = phaseTokens ? ` · ${formatTokens(phaseTokens.total_tokens)} tokens` : '';
+        return `${marker} · ${phase.name}${phase.summary ? ` · ${phase.summary}` : ''}${tokenLabel}`;
+      }),
+    });
+  } else {
+    items.push({
       type: 'thinking',
       title: busy ? 'Thinking' : 'Request analysis',
       body: session.reasoning_summary || session.plan?.summary || 'Analyzing request and project shape.',
       state: busy ? 'active' : 'done',
       steps: session.assumptions || session.plan?.steps || [],
-    },
-  ];
+    });
+  }
 
   if (session.clarification?.questions?.length) {
     items.push({
@@ -88,8 +175,8 @@ function activityItems(session, busy) {
   if (session.requested_files?.length) {
     items.push({
       type: 'tool',
-      title: 'Uploaded files',
-      body: session.requested_files.map((file) => file.path).join('\n'),
+      title: 'Uploaded context/files',
+      body: session.requested_files.map((file) => `${file.kind || 'context'} · ${file.path}`).join('\n'),
       state: 'done',
     });
   }
@@ -139,6 +226,19 @@ function activityItems(session, busy) {
     items.push({ type: 'error', title: 'Failed', body: session.error, state: 'error' });
   }
 
+  if (session.token_usage?.total_tokens > 0) {
+    const u = session.token_usage;
+    items.push({
+      type: 'tool',
+      title: `Token usage · ${formatTokens(u.total_tokens)} total`,
+      body: `${u.calls} API call${u.calls === 1 ? '' : 's'} · ${formatTokens(u.prompt_tokens)} prompt · ${formatTokens(u.completion_tokens)} completion`,
+      state: 'done',
+      steps: Object.entries(u.by_phase || {}).map(
+        ([phase, p]) => `${phase}: ${formatTokens(p.total_tokens)} tokens (${p.calls} call${p.calls === 1 ? '' : 's'})`
+      ),
+    });
+  }
+
   return items;
 }
 
@@ -183,6 +283,9 @@ function CodeViewer({ session, busy }) {
   const [selectedPath, setSelectedPath] = useState('');
   const [mode, setMode] = useState('source');
   const selected = changes.find((change) => change.path === selectedPath) || changes[0];
+  const guardMessage = session?.guard?.status === 'blocked' || session?.status === 'blocked'
+    ? session?.guard?.message || session?.error || 'Request blocked by Copilot security guard.'
+    : '';
 
   useEffect(() => {
     if (changes[0]?.path && !changes.some((change) => change.path === selectedPath)) {
@@ -194,10 +297,18 @@ function CodeViewer({ session, busy }) {
     return (
       <section className="ccCodePane">
         <header><span>Source preview</span></header>
-        <div className="ccCodeEmpty">
-          {busy ? <Activity size={18} className="spin" /> : <Code2 size={18} />}
-          <span>{busy ? 'Waiting for generated code' : 'No generated code yet'}</span>
-        </div>
+        {guardMessage ? (
+          <div className="ccGuardNotice">
+            <span><ShieldAlert size={22} /></span>
+            <strong>Security harness</strong>
+            <p>{guardMessage}</p>
+          </div>
+        ) : (
+          <div className="ccCodeEmpty">
+            {busy ? <Activity size={18} className="spin" /> : <Code2 size={18} />}
+            <span>{busy ? 'Waiting for generated code' : 'No generated code yet'}</span>
+          </div>
+        )}
       </section>
     );
   }
@@ -252,11 +363,9 @@ function CodeViewer({ session, busy }) {
 
 export default function CopilotPage() {
   const [prompt, setPrompt] = useState('');
-  const [uploadedFile, setUploadedFile] = useState(null);
-  const [uploadedContent, setUploadedContent] = useState('');
-  const [uploadTarget, setUploadTarget] = useState(UPLOAD_TARGETS[0].value);
-  const [fileInstructions, setFileInstructions] = useState('');
-  const [showUpload, setShowUpload] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const uploadTarget = UPLOAD_TARGETS[0].value;
+  const [draggingUpload, setDraggingUpload] = useState(false);
   const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0].value);
   const [status, setStatus] = useState(null);
   const [sessions, setSessions] = useState([]);
@@ -264,6 +373,7 @@ export default function CopilotPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const streamRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   async function loadStatus() {
     try {
@@ -312,28 +422,49 @@ export default function CopilotPage() {
     };
   }
 
-  async function handleUploadChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  async function addUploadFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
     setError('');
     try {
-      setUploadedContent(await readFileAsText(file));
-      setUploadedFile(file);
-      setShowUpload(true);
+      const nextFiles = await Promise.all(files.map(async (file) => ({
+        id: fileId(file),
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
+        content: await readFileAsText(file),
+      })));
+      setUploadedFiles((current) => {
+        const byId = new Map(current.map((file) => [file.id, file]));
+        nextFiles.forEach((file) => byId.set(file.id, file));
+        return Array.from(byId.values()).slice(0, 10);
+      });
     } catch (err) {
-      setUploadedFile(null);
-      setUploadedContent('');
-      setError(err.message || 'Unable to read uploaded file');
-    } finally {
-      e.target.value = '';
+      setError(err.message || 'Unable to read uploaded files');
     }
+  }
+
+  async function handleUploadChange(e) {
+    await addUploadFiles(e.target.files);
+    e.target.value = '';
+  }
+
+  function removeUploadFile(id) {
+    setUploadedFiles((current) => current.filter((file) => file.id !== id));
+  }
+
+  function handleUploadDrop(e) {
+    e.preventDefault();
+    setDraggingUpload(false);
+    addUploadFiles(e.dataTransfer.files);
   }
 
   async function submitPrompt(e) {
     e.preventDefault();
     const cleanPrompt = prompt.trim();
-    const uploadedPath = uploadedFile ? `${uploadTarget}/${uploadedFile.name}` : '';
-    if (!cleanPrompt && !uploadedPath) return;
+    const selectedUploadTarget = UPLOAD_TARGETS[0];
+    if (!cleanPrompt && !uploadedFiles.length) return;
 
     const clarificationPrefix = activeSession?.status === 'clarification_needed'
       ? [
@@ -349,16 +480,17 @@ export default function CopilotPage() {
     const effectivePrompt = clarificationPrefix
       ? `${clarificationPrefix}\n${cleanPrompt || '(no extra text)'}`
       : cleanPrompt;
-    const requestedFiles = uploadedFile ? [{
-      path: uploadedPath,
+    const requestedFiles = uploadedFiles.map((file) => ({
+      path: `${uploadTarget}/${file.name}`,
+      kind: selectedUploadTarget.kind,
       action: 'create',
-      instructions: fileInstructions.trim(),
-      content: uploadedContent,
-    }] : [];
+      instructions: '',
+      content: file.content,
+    }));
 
     const workingSession = {
       id: 'working',
-      prompt: effectivePrompt || `Apply uploaded file ${uploadedFile?.name || ''}`,
+      prompt: effectivePrompt || `Use uploaded file context: ${uploadedFiles.map((file) => file.name).join(', ')}`,
       model: selectedModel,
       status: 'planning',
       requested_files: requestedFiles,
@@ -377,7 +509,7 @@ export default function CopilotPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: workingSession.prompt,
-          target: 'okr-ghcp',
+          target: 'harness-copilot',
           model: selectedModel,
           requested_files: requestedFiles,
           auto_apply: true,
@@ -389,10 +521,7 @@ export default function CopilotPage() {
       setSessions((prev) => [data, ...prev.filter((item) => item.id !== data.id)]);
       connectSessionStream(data.id);
       setPrompt('');
-      setUploadedFile(null);
-      setUploadedContent('');
-      setFileInstructions('');
-      setShowUpload(false);
+      setUploadedFiles([]);
     } catch (err) {
       setError(err.message || 'Failed to start code session');
       setBusy(false);
@@ -431,7 +560,7 @@ export default function CopilotPage() {
       <main className="ccMain">
         <header className="ccHeader">
           <div>
-            <span>Harness managed</span>
+            <span>{status?.target_repo || 'HARNESS_COPILOT'}</span>
             <h1>Copilot Code Workbench</h1>
           </div>
           <StatusPill status={activeSession?.status || (busy ? 'planning' : 'idle')} />
@@ -444,44 +573,79 @@ export default function CopilotPage() {
           <CodeViewer session={activeSession} busy={busy} />
         </section>
 
-        <form className="ccComposer" onSubmit={submitPrompt}>
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder={activeSession?.status === 'clarification_needed' ? 'Answer the questions so code can be generated' : 'Ask for a runnable source change'}
-            rows={3}
-          />
-
-          {showUpload && (
-            <div className="ccUploadPanel">
-              <label className="ccUploadDrop">
-                <FilePlus2 size={17} />
-                <span>{uploadedFile ? uploadedFile.name : 'Upload source file'}</span>
-                <small>{uploadedFile ? `${Math.ceil(uploadedFile.size / 1024)} KB` : 'Text/code files'}</small>
-                <input type="file" onChange={handleUploadChange} />
-              </label>
-              <div className="ccUploadTargets" role="group" aria-label="Upload destination">
-                {UPLOAD_TARGETS.map((target) => (
-                  <button
-                    key={target.value}
-                    type="button"
-                    className={uploadTarget === target.value ? 'active' : ''}
-                    onClick={() => setUploadTarget(target.value)}
-                  >
-                    {target.label}
-                  </button>
+        <form
+          className="ccComposer"
+          onSubmit={submitPrompt}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDraggingUpload(true);
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget)) setDraggingUpload(false);
+          }}
+          onDrop={handleUploadDrop}
+        >
+          <div className={`ccChatInput${uploadedFiles.length ? ' ccChatInput--attached' : ''}`}>
+            {uploadedFiles.length > 0 && (
+              <div className="ccChatAttachments">
+                {uploadedFiles.map((file) => (
+                  <UploadFileChip
+                    key={file.id}
+                    file={file}
+                    onRemove={() => removeUploadFile(file.id)}
+                  />
                 ))}
               </div>
-              <input
-                type="text"
-                value={fileInstructions}
-                onChange={(e) => setFileInstructions(e.target.value)}
-                placeholder="Optional instruction for uploaded file"
-              />
-              {uploadedFile && (
-                <code className="ccUploadPath">{uploadTarget}/{uploadedFile.name}</code>
-              )}
+            )}
+
+            <div className="ccChatInputRow">
+              <button
+                type="button"
+                className="ccChatUploadButton"
+                onClick={() => {
+                  fileInputRef.current?.click();
+                }}
+                aria-label="Attach files"
+              >
+                ↑
+              </button>
+              <input ref={fileInputRef} type="file" multiple onChange={handleUploadChange} />
+
+              <div className="ccChatTextWrap">
+                {!prompt && (
+                  <span className="ccChatPlaceholder">
+                    {activeSession?.status === 'clarification_needed' ? (
+                      'Answer the questions so code can be generated'
+                    ) : (
+                      <>
+                        Type <kbd>/</kbd> for commands
+                      </>
+                    )}
+                  </span>
+                )}
+                <textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  rows={1}
+                  aria-label="Copilot prompt"
+                />
+              </div>
+
+              <button type="button" className="ccVoiceButton" aria-label="Voice input">
+                <span />
+                <span />
+                <span />
+                <span />
+              </button>
+
+              <button type="submit" className="ccSendOrb" disabled={busy || (!prompt.trim() && !uploadedFiles.length)} aria-label="Send">
+                {busy ? <Activity size={17} className="spin" /> : <Send size={18} />}
+              </button>
             </div>
+          </div>
+
+          {draggingUpload && (
+            <div className="ccDropHint">Drop files to attach them as context</div>
           )}
 
           <div className="ccComposerFooter">
@@ -493,18 +657,6 @@ export default function CopilotPage() {
                 ))}
               </select>
             </label>
-            <button
-              type="button"
-              className={`ccIconButton${showUpload ? ' active' : ''}`}
-              onClick={() => setShowUpload((value) => !value)}
-              aria-label="Toggle upload"
-            >
-              <FilePlus2 size={17} />
-            </button>
-            <button type="submit" className="ccSendButton" disabled={busy || (!prompt.trim() && !uploadedFile)}>
-              {busy ? <Activity size={16} className="spin" /> : <Send size={16} />}
-              Send
-            </button>
           </div>
         </form>
       </main>

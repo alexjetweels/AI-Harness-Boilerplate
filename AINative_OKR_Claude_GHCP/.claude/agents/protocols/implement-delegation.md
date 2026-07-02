@@ -15,6 +15,20 @@ mode: autonomous
 language: Vietnamese
 ```
 
+## Empty Workspace Handling (Mandatory)
+
+`backend/` and `frontend/` not existing yet is the **expected state** before Step 10 runs — no
+earlier pipeline step creates application source code (Steps 1-9 only produce design/spec
+documents). Finding no source tree is a signal to scaffold the application from
+`plan.md` + `data-model.md` + `tasks.md`, not a blocker.
+
+- Do NOT stop to ask the user for an existing codebase or repo pointer.
+- Do NOT produce a phase report whose conclusion is "cannot implement without an existing
+  frontend/backend" — write the code instead.
+- If something is genuinely ambiguous (e.g. a task references a library not in
+  `technical_architecture.md`), follow `protocols/auto-resolve-protocol.md` and document the
+  assumption in the report — do not use ambiguity as a reason to skip code generation entirely.
+
 ## Real Execution Mandate
 
 ALL terminal commands MUST be executed via the `run` tool with real output captured.

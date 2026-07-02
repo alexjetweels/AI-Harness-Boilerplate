@@ -1537,6 +1537,41 @@ textarea:focus-visible, select:focus-visible, input[type='text']:focus-visible {
   font-size: 14px;
 }
 
+.ccGuardNotice {
+  flex: 1;
+  min-height: 260px;
+  padding: 28px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  text-align: center;
+  color: #d6dae4;
+}
+
+.ccGuardNotice span {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(255, 121, 112, 0.12);
+  color: #ff8f86;
+}
+
+.ccGuardNotice strong {
+  color: #f2f4f8;
+  font-size: 15px;
+}
+
+.ccGuardNotice p {
+  max-width: 560px;
+  margin: 0;
+  color: #aeb4c0;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
 .ccComposer {
   min-height: 150px;
   padding: 12px 14px;
@@ -1546,78 +1581,246 @@ textarea:focus-visible, select:focus-visible, input[type='text']:focus-visible {
   background: #141519;
 }
 
-.ccComposer textarea {
+.ccChatInput {
   min-height: 66px;
-  max-height: 130px;
-  resize: vertical;
-  border-radius: 9px;
-  background: #101114;
+  padding: 12px 14px;
+  border-radius: 34px;
+  background: #f7f8fa;
+  box-shadow: 0 20px 50px rgba(80, 100, 120, 0.16);
+  color: #111827;
 }
 
-.ccUploadPanel {
-  display: grid;
-  grid-template-columns: minmax(230px, 0.8fr) minmax(260px, 1fr);
-  gap: 10px;
-  padding: 10px;
-  border: 1px solid #27282d;
-  border-radius: 10px;
-  background: #101114;
+.ccChatInput--attached {
+  padding-top: 14px;
 }
 
-.ccUploadDrop {
-  position: relative;
-  min-height: 64px;
-  padding: 10px 12px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: 1fr 1fr;
-  column-gap: 10px;
+.ccChatAttachments {
+  margin-bottom: 13px;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  border: 1px dashed #3a3d46;
-  border-radius: 9px;
-  cursor: pointer;
+  gap: 12px;
 }
 
-.ccUploadDrop svg { grid-row: 1 / -1; color: #b9c0cc; }
-.ccUploadDrop span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #f1f1f1; font-size: 12px; font-weight: 800; }
-.ccUploadDrop small { color: #828894; font-size: 11px; }
-.ccUploadDrop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.ccChatInputRow {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
 
-.ccUploadTargets {
-  min-height: 64px;
+.ccChatUploadButton {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.ccUploadTargets button {
-  border: 1px solid #30333c;
-  border-radius: 8px;
-  background: #191b20;
-  color: #aeb3bf;
-  font-size: 11px;
+  place-items: center;
+  border: 1px solid #1f2937;
+  border-radius: 999px;
+  background: #fff;
+  color: #111827;
+  font-size: 16px;
   font-weight: 800;
+  line-height: 1;
 }
 
-.ccUploadTargets button.active {
-  border-color: #4e8f78;
-  background: #142a22;
-  color: #93e1c5;
+.ccChatUploadButton:hover {
+  background: #f0f3f7;
 }
 
-.ccUploadPanel > input {
-  grid-column: 1 / -1;
-  border-radius: 8px;
-  background: #15161a;
+.ccChatInput input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.ccUploadPath {
-  grid-column: 1 / -1;
+.ccChatTextWrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+}
+
+.ccChatTextWrap textarea {
+  width: 100%;
+  min-height: 34px;
+  max-height: 100px;
+  padding: 4px 0;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #111827;
+  font: 18px/1.45 var(--font-sans);
+  box-shadow: none;
+}
+
+.ccChatPlaceholder {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  max-width: 100%;
+  transform: translateY(-50%);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #d5d7df;
-  font: 12px ui-monospace, monospace;
+  color: #8d939d;
+  font-size: 18px;
+  pointer-events: none;
+}
+
+.ccChatPlaceholder kbd {
+  min-width: 28px;
+  height: 30px;
+  margin: 0 4px;
+  padding: 0 8px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #d7dbe1;
+  border-radius: 8px;
+  background: #fff;
+  color: #8a8f98;
+  font: inherit;
+}
+
+.ccVoiceButton {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  background: transparent;
+}
+
+.ccVoiceButton span {
+  width: 2px;
+  border-radius: 999px;
+  background: #111827;
+}
+
+.ccVoiceButton span:nth-child(1) { height: 11px; }
+.ccVoiceButton span:nth-child(2) { height: 18px; }
+.ccVoiceButton span:nth-child(3) { height: 24px; }
+.ccVoiceButton span:nth-child(4) { height: 14px; }
+
+.ccSendOrb {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: #aeb8cf;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(80, 96, 120, 0.2);
+}
+
+.ccSendOrb:not(:disabled) {
+  background: #111827;
+}
+
+.ccSendOrb:disabled {
+  opacity: 0.7;
+}
+
+.ccDropHint {
+  padding: 12px 14px;
+  border: 1px dashed #60c49c;
+  border-radius: 18px;
+  background: rgba(236, 253, 245, 0.96);
+  color: #0f7b5b;
+  font-size: 13px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.ccUploadFile {
+  position: relative;
+  min-width: 236px;
+  max-width: min(320px, 100%);
+  height: 64px;
+  padding: 8px 34px 8px 10px;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e3e8f0;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.ccUploadFile img,
+.ccUploadFileIcon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+}
+
+.ccUploadFile img {
+  object-fit: cover;
+  background: #eef2f7;
+}
+
+.ccUploadFileIcon {
+  color: #fff;
+}
+
+.ccUploadFileIcon--pdf { background: #e92f5e; }
+.ccUploadFileIcon--doc { background: #2f7df0; }
+.ccUploadFileIcon--image { background: #14b8a6; }
+.ccUploadFileIcon--text { background: #64748b; }
+.ccUploadFileIcon--code { background: #111827; }
+.ccUploadFileIcon--file { background: #7c3aed; }
+
+.ccUploadFile strong,
+.ccUploadFile small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ccUploadFile strong {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.ccUploadFile small {
+  margin-top: 3px;
+  color: #7b8492;
+  font-size: 12px;
+}
+
+.ccUploadFile button {
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #cfd6df;
+  border-radius: 999px;
+  background: #fff;
+  color: #111827;
+  box-shadow: 0 5px 14px rgba(15, 23, 42, 0.13);
+}
+
+.ccUploadFile button:hover {
+  border-color: #ff8b86;
+  color: #ffc0bd;
 }
 
 .ccComposerFooter {
@@ -1716,9 +1919,12 @@ textarea:focus-visible, select:focus-visible, input[type='text']:focus-visible {
     min-height: 420px;
   }
 
-  .ccComposer,
-  .ccUploadPanel {
+  .ccComposer {
     grid-template-columns: 1fr;
+  }
+
+  .ccUploadFile {
+    min-width: min(240px, 100%);
   }
 }
 
