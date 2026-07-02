@@ -26,4 +26,5 @@ else
 fi
 
 $POETRY install
+$POETRY run alembic upgrade head
 exec $POETRY run uvicorn app.main:app --host "$HOST" --port "$PORT" --reload
