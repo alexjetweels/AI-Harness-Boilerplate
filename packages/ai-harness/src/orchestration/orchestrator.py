@@ -40,12 +40,33 @@ def _expand(s: str, ctx: dict) -> str:
     return s
 
 
-def _ctx_for(state: dict) -> dict:
+def _context_packet_for(state: dict, phase_name: str | None) -> str | None:
+    """Pick the phase-scoped context packet path, falling back to the full one.
+
+    `phase_context_packets` (built once per run by context.builder.build) maps
+    each phase name to a packet file containing only the sources tagged for
+    that phase — see harness.okr.yaml's `phases:` field on each context
+    source. Phases with no scoped entry (or when the mapping is absent, e.g.
+    older state from before this feature) fall back to the full packet.
+    """
+    ctx = state.get("ctx", {})
+    per_phase = ctx.get("phase_context_packets") or {}
+    if phase_name and phase_name in per_phase:
+        return per_phase[phase_name]
+    return ctx.get("context_packet")
+
+
+def _ctx_for(state: dict, phase_name: str | None = None) -> dict:
     ctx = dict(state.get("ctx", {}))
     ctx["feature"] = state["feature"]
     ctx["repo"] = "."
     if state.get("feature_dir"):
         ctx["feature_dir"] = state["feature_dir"]
+    # Template placeholders like `{context_packet}` in a phase's `command:`
+    # text should resolve to that phase's scoped packet, not the full one.
+    scoped_packet = _context_packet_for(state, phase_name)
+    if scoped_packet:
+        ctx["context_packet"] = scoped_packet
     return ctx
 
 
@@ -53,18 +74,19 @@ def _write_artifact(run_id: str, artifact_type: str, name: str, content: str) ->
     storage.save_artifact(run_id, artifact_type, name, content=content)
 
 
-def _inject_context(prompt: str, state: dict, attempt: int) -> str:
+def _inject_context(prompt: str, state: dict, attempt: int, phase_name: str | None = None) -> str:
     if attempt != 1:
         # Repair retries resume the same agent session, which already saw
-        # the context packet on attempt 1 — re-pasting it here would just
-        # duplicate that content in every repair prompt for no benefit.
+        # the (phase-scoped) context packet on attempt 1 — re-pasting it here
+        # would just duplicate that content in every repair prompt for no
+        # benefit. The retry prompt itself only carries the failed gate's
+        # report (see the caller), i.e. context scoped to the retry point.
         return prompt
 
-    ctx = state.get("ctx", {})
-    packet_path = ctx.get("context_packet")
+    packet_path = _context_packet_for(state, phase_name)
     if packet_path and not str(packet_path).startswith("db://"):
         return (
-            "The harness context packet for this run is available at "
+            "The harness context packet for this phase is available at "
             f"`{packet_path}`. Read that file with your Read tool first and use it "
             "as the authoritative run context. Do not read unrelated files unless "
             "the phase instructions require it.\n\n"
@@ -72,7 +94,7 @@ def _inject_context(prompt: str, state: dict, attempt: int) -> str:
             f"{prompt}"
         )
 
-    content = ctx.get("context_packet_content")
+    content = state.get("ctx", {}).get("context_packet_content")
     if not content:
         return prompt
     return (
@@ -94,7 +116,10 @@ def run(cfg, feature: str, run_id: str, repo: str = ".",
         ctx = {"feature": feature}
         if ctx_extra:
             ctx.update(ctx_extra)
-        ctx.update(context_builder.build(repo, run_id, feature, getattr(cfg, "context", {})))
+        # Gate-only phases (no `command`) never call the agent, so they never
+        # read a context packet — skip building one for them.
+        phase_names = [p.name for p in cfg.phases if p.command]
+        ctx.update(context_builder.build(repo, run_id, feature, getattr(cfg, "context", {}), phase_names))
         state = state_store.new_run(state_dir, run_id, feature, ctx)
 
     state["provider"] = getattr(cfg.agent, "provider", "")
@@ -131,14 +156,16 @@ def run(cfg, feature: str, run_id: str, repo: str = ".",
 
             if phase.command:
                 if attempt == 1:
-                    prompt = _expand(phase.command, _ctx_for(state))
-                    res = agent_runner.run(cfg.agent, _inject_context(prompt, state, attempt), cwd=repo,
+                    prompt = _expand(phase.command, _ctx_for(state, phase.name))
+                    res = agent_runner.run(cfg.agent, _inject_context(prompt, state, attempt, phase.name), cwd=repo,
                                           run_id=run_id, phase_name=phase.name)
                 else:
-                    # Repair: resume the same session, hand back the failure report.
+                    # Repair: resume the same session, hand back only the
+                    # failed gate's report — context scoped to the retry
+                    # point itself, not a re-fetch of the phase packet.
                     prompt = ("The previous attempt did not pass verification. "
                               "Fix the following issues, then stop:\n\n" + (feedback or ""))
-                    res = agent_runner.run(cfg.agent, _inject_context(prompt, state, attempt),
+                    res = agent_runner.run(cfg.agent, _inject_context(prompt, state, attempt, phase.name),
                                           resume_session=session, cwd=repo,
                                           run_id=run_id, phase_name=phase.name)
 

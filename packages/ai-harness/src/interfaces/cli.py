@@ -25,9 +25,17 @@ def _config_path(repo: str, config: str) -> str:
     return os.path.join(repo, config)
 
 
+# Cheapest model per provider — a model id from one provider is invalid on
+# the other (e.g. Codex's "gpt-5.4-mini" 404s against the Claude API), so
+# switching provider must carry the model along with it.
+_CHEAP_MODEL = {"claude": "haiku", "codex": "gpt-5.4-mini"}
+
+
 def _override_provider(cfg, provider: str | None) -> None:
     if not provider:
         return
+    if provider != cfg.agent.provider:
+        cfg.agent.model = _CHEAP_MODEL.get(provider, cfg.agent.model)
     cfg.agent.provider = provider
     if getattr(cfg.agent, "bin", "") in {"", "claude", "codex"}:
         cfg.agent.bin = provider

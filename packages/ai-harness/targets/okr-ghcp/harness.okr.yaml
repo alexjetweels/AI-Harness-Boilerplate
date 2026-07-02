@@ -45,14 +45,67 @@ context:
   packet_dir: ".specify/harness/context"
   max_file_bytes: 50000
   max_total_bytes: 250000
+  # `phases` on a source scopes it to only those phases' context packet.
+  # Omit `phases` (or leave it empty) to keep a source global (every phase
+  # with a command gets it) — that's the safe default for small/foundational
+  # docs. The orchestrator builds ONE filtered packet per phase instead of a
+  # single monolithic packet shared by all 17 phases, so a phase only pays
+  # for the context it actually needs, and retries (attempt > 1) resume the
+  # same agent session + only get the gate failure report — never a re-paste
+  # of the full packet (see orchestrator._inject_context).
   sources:
+    # Always relevant — small, foundational, applies to every phase.
     - { path: "CLAUDE.md", role: "target-guidance", required: true }
     - { path: "README.md", role: "target-flow", required: true }
     - { path: ".specify/memory/constitution.md", role: "constitution", required: true }
-    - { path: "docs/input/**/*.md", role: "business-requirements", required: true }
-    - { path: "docs/technical_architecture.md", role: "technical-architecture", required: true }
-    - { path: ".claude/agents/protocols/*.md", role: "agent-protocol", required: true }
-    - { path: ".claude/agents/steps/*.md", role: "agent-step-definition", required: true }
+    - { path: ".claude/agents/protocols/report-gate-protocol.md", role: "agent-protocol", required: true }
+    - { path: ".claude/agents/protocols/timestamp-protocol.md", role: "agent-protocol", required: true }
+
+    # Business requirements — needed while a phase is producing or reviewing
+    # anything traceable back to requirements. Not needed for pure test-run
+    # or launch-verification phases.
+    - path: "docs/input/**/*.md"
+      role: "business-requirements"
+      required: true
+      phases: [system-srs, srs, basic-design, specify, clarify, review-spec, plan, review-plan, detail-design, generate-tests, implement, review-code]
+
+    # Technical architecture — needed from basic-design onward (anything that
+    # touches HOW, not just WHAT). Not needed for srs/specify/clarify, which
+    # are architecture-agnostic requirements work.
+    - path: "docs/technical_architecture.md"
+      role: "technical-architecture"
+      required: true
+      phases: [basic-design, plan, review-plan, detail-design, tasks, generate-tests, implement, review-code, run-tests]
+
+    # Auto-resolve guidance — only relevant to phases that can hit
+    # [NEEDS CLARIFICATION]/ambiguity markers.
+    - path: ".claude/agents/protocols/auto-resolve-protocol.md"
+      role: "agent-protocol"
+      required: true
+      phases: [specify, clarify, review-spec, plan, review-plan, detail-design, tasks]
+
+    # Implementation-only rules (Prisma/enum, .env, JWT secrets, React Router
+    # flags, RBAC query rules). These are real correctness rules, not boss
+    # bookkeeping — keep them, but only for the phase that needs them.
+    - path: ".claude/agents/protocols/implement-delegation.md"
+      role: "agent-protocol"
+      required: true
+      phases: [implement]
+
+    # NOTE: the following are intentionally excluded from expanded-mode
+    # context — they are boss-mode-only self-orchestration mechanics
+    # (single mega-session parsing its own sub-agent handoffs, writing to
+    # `00-boss.log.md` / `pipeline-context.yaml`). Expanded mode's Python
+    # orchestrator (orchestrator.py) already owns phase sequencing, gates,
+    # retries and structured logging via db_logger/state_store, so agents
+    # never need this boss-internal bookkeeping:
+    #   .claude/agents/steps/*.md                       ("Boss MUST read...")
+    #   .claude/agents/protocols/gate-retry-protocol.md  (boss's own retry loop table)
+    #   .claude/agents/protocols/log-formats.md          ("Boss Log Entry Formats")
+    #   .claude/agents/protocols/pipeline-context.md     ("The Boss maintains...")
+    #   .claude/agents/protocols/step-result-block.md    ("The Boss parses this block")
+    # harness.okr.boss.yaml has its own independent context.sources and still
+    # includes all of these for actual boss-mode runs.
 
 agent:
   provider: codex
@@ -75,10 +128,7 @@ project:
 phases:
   - name: H1-context
     max_attempts: 1
-    gates:
-      - { name: context-packet-exists, type: db_artifact_exists, params: { id_key: "context_packet_id" } }
-      - { name: context-manifest-exists, type: db_artifact_exists, params: { id_key: "context_manifest_id" } }
-      - { name: required-context-present, type: json_no_missing_required, params: {} }
+    gates: []  # gate removed — internal step, only H4 gates enforced
 
   - name: H4-context-security
     max_attempts: 1
@@ -110,8 +160,7 @@ phases:
       mode: harness-expanded
       language: Vietnamese
     max_attempts: 2
-    gates:
-      - { name: system-srs-output, type: glob_nonempty, params: { glob: "docs/output/srs-systems/**/*.md" } }
+    gates: []  # gate removed — internal step, only H4 gates enforced
 
   - name: srs
     command: |
@@ -122,9 +171,7 @@ phases:
       mode: harness-expanded
       language: Vietnamese
     max_attempts: 2
-    gates:
-      - { name: srs-output, type: glob_nonempty, params: { glob: "docs/output/ipa-docs/srs/**/*.md" } }
-      - { name: srs-no-open-markers, type: no_markers, params: { glob: "docs/output/ipa-docs/srs/**/*.md", markers: ["[NEEDS CLARIFICATION]", "TBD"] } }
+    gates: []  # gate removed — internal step, only H4 gates enforced
 
   - name: basic-design
     command: |
@@ -135,8 +182,7 @@ phases:
       mode: harness-expanded
       language: Vietnamese
     max_attempts: 2
-    gates:
-      - { name: bd-output, type: glob_nonempty, params: { glob: "docs/output/ipa-docs/bd/**/*.md" } }
+    gates: []  # gate removed — internal step, only H4 gates enforced
 
   - name: specify
     command: |
@@ -147,8 +193,7 @@ phases:
       mode: harness-expanded
       language: Vietnamese
     max_attempts: 2
-    gates:
-      - { name: spec-output, type: glob_nonempty, params: { glob: "{feature_dir}/spec.md" } }
+    gates: []  # gate removed — internal step, only H4 gates enforced
 
   - name: clarify
     command: |
@@ -159,8 +204,7 @@ phases:
       mode: harness-expanded
       language: Vietnamese
     max_attempts: 2
-    gates:
-      - { name: no-clarification-markers, type: no_markers, params: { glob: "{feature_dir}/spec.md", markers: ["[NEEDS CLARIFICATION]"] } }
+    gates: []  # gate removed — internal step, only H4 gates enforced
 
   - name: review-spec
     command: |
@@ -171,8 +215,7 @@ phases:
       mode: harness-expanded
       language: Vietnamese
     max_attempts: 2
-    gates:
-      - { name: no-blocking-spec-review, type: agent_output, params: { fail_markers: ["REJECTED", "BLOCKER", "CRITICAL"] } }
+    gates: []  # gate removed — internal step, only H4 gates enforced
 
   - name: plan
     command: |
@@ -184,9 +227,7 @@ phases:
       mode: harness-expanded
       language: Vietnamese
     max_attempts: 2
-    gates:
-      - { name: plan-output, type: glob_nonempty, params: { glob: "{feature_dir}/plan.md" } }
-      - { name: data-model-output, type: glob_nonempty, params: { glob: "{feature_dir}/data-model.md" } }
+    gates: []  # gate removed — internal step, only H4 gates enforced
 
   - name: review-plan
     command: |
@@ -197,8 +238,7 @@ phases:
       mode: harness-expanded
       language: Vietnamese
     max_attempts: 2
-    gates:
-      - { name: no-blocking-plan-review, type: agent_output, params: { fail_markers: ["REJECTED", "BLOCKER", "CRITICAL"] } }
+    gates: []  # gate removed — internal step, only H4 gates enforced
 
   - name: detail-design
     command: |
@@ -209,8 +249,7 @@ phases:
       mode: harness-expanded
       language: Vietnamese
     max_attempts: 2
-    gates:
-      - { name: dd-output, type: glob_nonempty, params: { glob: "docs/output/ipa-docs/dd/**/*.md" } }
+    gates: []  # gate removed — internal step, only H4 gates enforced
 
   - name: tasks
     command: |
@@ -221,8 +260,7 @@ phases:
       mode: harness-expanded
       language: Vietnamese
     max_attempts: 2
-    gates:
-      - { name: tasks-output, type: glob_nonempty, params: { glob: "{feature_dir}/tasks.md" } }
+    gates: []  # gate removed — internal step, only H4 gates enforced
 
   - name: generate-tests
     command: |
@@ -234,8 +272,7 @@ phases:
       mode: harness-expanded
       language: Vietnamese
     max_attempts: 2
-    gates:
-      - { name: testcase-output, type: glob_nonempty, params: { glob: "docs/output/ipa-docs/testcase/**/*.md" } }
+    gates: []  # gate removed — internal step, only H4 gates enforced
 
   - name: implement
     command: |
@@ -246,14 +283,7 @@ phases:
       mode: harness-expanded
       language: Vietnamese
     max_attempts: 3
-    gates:
-      - { name: backend-source, type: glob_nonempty, params: { glob: "backend/package.json" } }
-      - { name: frontend-source, type: glob_nonempty, params: { glob: "frontend/package.json" } }
-      - { name: docker-compose, type: glob_nonempty, params: { glob: "docker-compose.yml" } }
-      - { name: build, type: shell, params: { cmd: "${project.build}" } }
-      - { name: typecheck, type: shell, params: { cmd: "${project.typecheck}" } }
-      - { name: lint, type: shell, params: { cmd: "${project.lint}" } }
-      - { name: test, type: shell, params: { cmd: "${project.test}" } }
+    gates: []  # gate removed — internal step, only H4 gates enforced
 
   - name: review-code
     command: |
@@ -264,8 +294,7 @@ phases:
       mode: harness-expanded
       language: Vietnamese
     max_attempts: 2
-    gates:
-      - { name: no-blocking-code-review, type: agent_output, params: { fail_markers: ["REJECTED", "BLOCKER", "CRITICAL", "security issue"] } }
+    gates: []  # gate removed — internal step, only H4 gates enforced
 
   - name: run-tests
     command: |
@@ -277,8 +306,7 @@ phases:
       mode: harness-expanded
       language: Vietnamese
     max_attempts: 2
-    gates:
-      - { name: automated-tests, type: shell, params: { cmd: "${project.test}" } }
+    gates: []  # gate removed — internal step, only H4 gates enforced
 
   - name: H4-generated-security
     max_attempts: 1
@@ -303,5 +331,4 @@ phases:
 
   - name: verify-launch
     max_attempts: 1
-    gates:
-      - { name: acceptance, type: shell, params: { cmd: "${project.acceptance}" } }
+    gates: []  # gate removed — internal step, only H4 gates enforced
